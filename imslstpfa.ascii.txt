@@ -1,0 +1,651 @@
+ABENDCD  EQU   3500                                                     00010023
+LSTIC    CEEENTRY PARMREG=4                                             00020023
+*                                                                       00030023
+* Get 24 bit storage for DCB                                            00040023
+*                                                                       00050023
+         STORAGE OBTAIN,LENGTH=4096,LOC=BELOW                           00060023
+         LR    R6,R1                                                    00070023
+         USING L24,R6                                                   00080023
+*                                                                       00090023
+* Move the model DCB to 24 bit as LE forces us to AMODE 31/RMODE ANY    00100023
+*                                                                       00110023
+         MVC   SNAP(LSNAP),#SNAP                                        00120027
+         MVC   PRINT(LPRINT),#PRINT                                     00130023
+         OI    OPENLST,X'80'                                            00140023
+         OPEN  (PRINT,OUTPUT),MF=(E,OPENLST),MODE=31                    00150023
+         PUT   PRINT,HEADER                                             00160023
+*                                                                       00170023
+         TIME  ,                                                        00180071
+         ST    R1,PYYYYDDD                                              00190073
+         AP    PYYYYDDD,=P'1900000' This century please.                00200073
+         SPACE                                                          00210073
+         DSPAPI FUNC=STARTDBRC,                                        X00220023
+               TOKEN=DBRCTOK,                                          X00230023
+               RETCODE=RCODE,                                          X00240023
+               RSNCODE=RSN,                                            X00250023
+               SYSPRINT=APIPRINT,                                      X00260023
+               MF=(E,DSPSTA,COMPLETE)                                   00270023
+         L     R5,RCODE                                                 00280023
+         LTR   R5,R5                                                    00290023
+         JZ    STARTOK                                                  00300023
+*                                                                       00310023
+* Handle any error from STARTDBRC call                                  00320023
+*                                                                       00330023
+         PUT   PRINT,STARTF                                             00340023
+         JAS   R10,PRTRCRSN                                             00350028
+         CALL  CEE3ABD,(=A(ABENDCD+1),=F'0'),MF=(E,CALLLST)             00360023
+STARTOK  DS    0H                                                       00370023
+*                                                                       00380023
+* Get the first database record (sorted alphabetically)                 00390023
+*                                                                       00400023
+         DSPAPI FUNC=QUERY,TYPE=DB,                                    X00410023
+               LOC=FIRST,                                              X00420023
+               OUTPUT=DBRCOUT,DDN=NULL,LIST=NONE,                      X00430025
+               TOKEN=DBRCTOK,                                          X00440023
+               RETCODE=RCODE,                                          X00450023
+               RSNCODE=RSN,                                            X00460023
+               MF=(E,DSPDBD,COMPLETE)                                   00470023
+         L     R5,RCODE                                                 00480023
+         LTR   R5,R5                                                    00490023
+         JZ    QRY1OK                                                   00500023
+         PUT   PRINT,QUERYF                                             00510023
+         J     BADRTN                    Clean up and end RC=8          00520023
+QRY1OK   DS    0H                                                       00530023
+*                                                                       00540023
+* Test that DBRC returned some data                                     00550023
+*                                                                       00560023
+         L     R7,DBRCOUT                                               00570023
+         LTR   R7,R7                                                    00580023
+         JNZ   QRY1DTOK                                                 00590023
+         PUT   PRINT,QUERYF1                                            00600023
+         J     BADRTN                                                   00610023
+QRY1DTOK DS    0H                                                       00620023
+*        JAS   R10,PRTRCRSN                                             00630051
+         JAS   R10,PROCDB                                               00640028
+*                                                                       00650023
+* Main loop                                                             00660023
+*                                                                       00670023
+QUERY2   DS    0H                                                       00680023
+         DSPAPI FUNC=QUERY,TYPE=DB,                                    X00690023
+               LOC=NEXT,                                               X00700023
+               OUTPUT=DBRCOUT,DDN=*,LIST=(IC),                         X00710023
+               TOKEN=DBRCTOK,                                          X00720023
+               DBNAME=DBRCDBD,                                         X00730023
+               RETCODE=RCODE,                                          X00740023
+               RSNCODE=RSN,                                            X00750023
+               MF=(E,DSPDBD,COMPLETE)                                   00760023
+         L     R5,RCODE                                                 00770023
+         LTR   R5,R5                                                    00780023
+         JZ    QRY2OK                                                   00790023
+         L     R5,RSN                                                   00800023
+         CLM   R5,B'1111',=XL4'D8200002'   No more databases            00810023
+         JE    RETURN                      That's all folks             00820023
+         PUT   PRINT,QUERYF2                                            00830023
+         J     BADRTN                    Clean up and end RC=8          00840023
+QRY2OK   DS    0H                                                       00850023
+*                                                                       00860023
+* Test that DBRC returned some data                                     00870023
+*                                                                       00880023
+         L     R7,DBRCOUT                                               00890023
+         LTR   R7,R7                                                    00900023
+         JNZ   QRY2DTOK                                                 00910023
+         PUT   PRINT,QUERYF3                                            00920023
+         J     BADRTN                                                   00930023
+QRY2DTOK DS    0H                                                       00940030
+*        JAS   R10,PRTRCRSN                                             00950051
+         JAS   R10,PROCDB                                               00960047
+         MVI   PRT1TEXT,C' '                                            00970023
+         MVC   PRT1TEXT+1(LPRT1TEXT-1),PRT1TEXT                         00980023
+         MVI   PRT1ANSI,C' '                                            00990023
+         L     R5,RCODE                                                 01000023
+         LTR   R5,R5                                                    01010023
+         JZ    QUERY2                    go and process the next DB     01020023
+         J     BADRTN                    Clean up and end RC=8          01030023
+*                                                                       01040023
+* Print the return code/reason code (hex)                               01050023
+*                                                                       01060023
+PRTRCRSN DS    0H                                                       01070023
+         MVC   PRT1LEN,=Y(50)                                           01080023
+         MVC   PRT1ZZ,=H'0'                                             01090023
+         MVC   PRT1TEXT(10),=CL10' '                                    01100023
+         MVC   PRT1TEXT+22(10),=CL5' '                                  01110023
+         MVC   PRT1TEXT+10,=CL15'RC:            '                       01120023
+         MVC   PRT1TEXT+15,RCODE                                        01130023
+         MVO   PRT1TEXT+14(7),PRT1TEXT+14(7) SHIFT BY ONE NIBBLE        01140023
+         UNPK  PRT1TEXT+14(8),PRT1TEXT+14(5) UNPACK TO OUTPUT AREA      01150023
+         NC    PRT1TEXT+14(8),PATTERN        RESET TOP BYTES            01160023
+         TR    PRT1TEXT+14(8),TRANTAB   TRANSLATE 00-0F TO F0-F9/C1-C6  01170023
+         MVC   PRT1TEXT+27,=CL15'RSN:           '                       01180023
+         MVC   PRT1TEXT+33,RSN                                          01190023
+         MVO   PRT1TEXT+32(7),PRT1TEXT+32(7) SHIFT BY ONE NIBBLE        01200023
+         UNPK  PRT1TEXT+32(8),PRT1TEXT+32(5) UNPACK TO OUTPUT AREA      01210023
+         NC    PRT1TEXT+32(8),PATTERN        RESET TOP BYTES            01220023
+         TR    PRT1TEXT+32(8),TRANTAB   TRANSLATE 00-0F TO F0-F9/C1-C6  01230023
+         PUT   PRINT,PRT1LINE                                           01240023
+         MVI   PRT1TEXT,C' '                                            01250058
+         MVC   PRT1TEXT+1(LPRT1TEXT-1),PRT1TEXT                         01260058
+         MVI   PRT1ANSI,C' '                                            01270058
+         BR    R10                                                      01280028
+*                                                                       01290028
+* Process a DB record                                                   01300028
+*                                                                       01310028
+PROCDB   DS    0H                                                       01320023
+         MVI   PRT1TEXT,C' '                                            01330023
+         MVC   PRT1TEXT+1(LPRT1TEXT-1),PRT1TEXT                         01340023
+         MVI   PRT1ANSI,C' '                                            01350023
+         USING DSPAPQHD,R7                                              01360023
+         ST    R7,SAVE1RG7                                              01370053
+         CLC   =C'DSPAPQDB',APQHD_EYECATCHER                            01380023
+         JE    PROCQDB                                                  01390023
+         CLC   =C'DSPAPQFD',APQHD_EYECATCHER                            01400023
+         JE    PROCQFD                                                  01410023
+         CLC   =C'DSPAPQHB',APQHD_EYECATCHER                            01420023
+         JE    PROCQHB                                                  01430023
+*                                                                       01440023
+* If we get here DBRC gave us a record we don't                         01450023
+* recognise, so print the QHD eyecatcher and bail out                   01460023
+*                                                                       01470023
+         PUT   PRINT,PROCF                                              01480023
+         MVC   PRT1LEN,=Y(26)                                           01490023
+         MVC   PRT1ZZ,=H'0'                                             01500023
+         MVC   PRT1TEXT(10),=CL10' '                                    01510023
+         MVC   PRT1TEXT+10,=CL4'QHD:'                                   01520023
+         MVC   PRT1TEXT+14(8),0(R7)                                     01530023
+         PUT   PRINT,PRT1LINE                                           01540023
+         J     BADRTN                    Clean up and end RC=8          01550023
+HD_NEXT  DS    0H                                                       01560053
+         L     R7,SAVE1RG7                                              01570053
+HD_LOOP  DS    0H                                                       01580053
+         TM    FLAGS,PFAset                                             01590059
+         BO    HD_DONE                                                  01600059
+         L     R7,APQHD_DEPPTR                                          01610053
+         LTR   R7,R7                                                    01620053
+         BZ    HD_DONE                                                  01630053
+         JAS   R8,PROCRI                                                01640059
+*        JAS   R8,SNAPR7                                                01650059
+         J     HD_LOOP                                                  01660053
+HD_DONE  DS    0H                                                       01670053
+         NI    FLAGS,255-PFAset                                         01680059
+         DROP  R7                                                       01690053
+         BR    R10                                                      01700053
+*                                                                       01710023
+* Process a full function DB record                                     01720023
+*                                                                       01730023
+PROCQDB  DS    0H                                                       01740023
+         LA    R7,APQHD_APQHD_LNG(,R7)                                  01750023
+         USING DSPAPQDB,R7                                              01760023
+*                                                                       01770023
+* Check PFA flag                                                        01780023
+*                                                                       01790023
+         OI    FLAGS,FoundPFA                                           01800023
+         MVC   PRT1LEN,=Y(PRT1DBL)                                      01810023
+         MVC   PRT1ZZ,=H'0'                                             01820023
+         MVC   PRT1DBNH,=CL8'DBName: '                                  01830023
+         MVC   PRT1DBN,apqdb_DBname                                     01840023
+         MVC   PRT1DBT,=CL14' Type=FF'                                  01850023
+         MVC   PRT1DBPF,=CL10' PFA flag='                               01860023
+         TM    apqdb_AUFLAG,apqdb_PAFLG                                 01870026
+         JNO   DB_NO                                                    01880026
+DB_YES   DS    0H                                                       01890026
+         MVC   PRT1DBCT,=CL3'YES'                                       01900023
+         OI    FLAGS,PFAset                                             01910059
+         J     DB_PRINT                                                 01920026
+DB_NO    DS    0H                                                       01930026
+         MVC   PRT1DBCT,=CL3'NO '                                       01940026
+DB_PRINT DS    0H                                                       01950026
+         PUT   PRINT,PRT1LINE                                           01960023
+         MVI   PRT1TEXT,C' '                                            01970023
+         MVC   PRT1TEXT+1(LPRT1TEXT-1),PRT1TEXT                         01980023
+         MVI   PRT1ANSI,C' '                                            01990023
+PROCQDBD DS    0H                                                       02000023
+         MVC   DBRCDBD,apqdb_DBname  prepare for LOC=NEXT call          02010023
+         J     HD_NEXT                                                  02020053
+*                                                                       02030023
+* Process a fast path DB record                                         02040023
+*                                                                       02050023
+PROCQFD  DS    0H                                                       02060023
+         LA    R7,APQHD_APQHD_LNG(,R7)                                  02070023
+         USING DSPAPQFD,R7                                              02080023
+*        JAS   R8,SNAPR7                                                02090059
+*                                                                       02100023
+* Check PFA flag                                                        02110023
+*                                                                       02120023
+         OI    FLAGS,FoundPFA                                           02130023
+         MVC   PRT1LEN,=Y(PRT1FPL)                                      02140023
+         MVC   PRT1ZZ,=H'0'                                             02150023
+         MVC   PRT1FPNH,=CL8'DBName: '                                  02160023
+         MVC   PRT1FPN,apqfd_DBname                                     02170023
+         MVC   PRT1FPT,=CL14' Type=FP DEDB '                            02180023
+         MVC   PRT1FPPF,=CL10' PFA flag='                               02190023
+         TM    apqfd_Flags,apqfd_PAFLG                                  02200023
+         JNO   FD_NO                                                    02210023
+FD_YES   DS    0H                                                       02220023
+         MVC   PRT1FPCT,=CL3'YES'                                       02230023
+         OI    FLAGS,PFAset                                             02240059
+         J     FD_PRINT                                                 02250023
+FD_NO    DS    0H                                                       02260023
+         MVC   PRT1FPCT,=CL3'NO '                                       02270023
+FD_PRINT DS    0H                                                       02280023
+         PUT   PRINT,PRT1LINE                                           02290023
+         MVI   PRT1TEXT,C' '                                            02300023
+         MVC   PRT1TEXT+1(LPRT1TEXT-1),PRT1TEXT                         02310023
+         MVI   PRT1ANSI,C' '                                            02320023
+PROCQFDD DS    0H                                                       02330023
+         MVC   DBRCDBD,apqfd_DBname  prepare for LOC=NEXT call          02340023
+         DROP  R7                                                       02350052
+         J     HD_NEXT                                                  02360053
+*                                                                       02370023
+* Process a HALDB base DB record                                        02380023
+*                                                                       02390023
+PROCQHB  DS    0H                                                       02400023
+         USING DSPAPQHD,R7                                              02410023
+         L     R4,APQHD_DEPPTR                                          02420023
+         LA    R7,APQHD_APQHD_LNG(,R7)                                  02430023
+         USING DSPAPQHB,R7                                              02440023
+         MVC   PRT2LEN,=Y(PRT2HBL)                                      02450023
+         MVC   PRT2ZZ,=H'0'                                             02460023
+         MVC   PRT2HBNH,=CL8'DBName: '                                  02470023
+         MVC   PRT2HBN,apqhb_DBname                                     02480023
+         MVC   PRT2HBT,=CL11' Type=HALDB'                               02490023
+         MVC   DBRCDBD,apqhb_DBname  prepare for LOC=NEXT call          02500023
+         DROP  R7                                                       02510023
+*                                                                       02520023
+* Process a HALDB partition DB record                                   02530023
+*                                                                       02540023
+PROCQHP  DS    0H                                                       02550045
+         USING DSPAPQHD,R4                                              02560045
+         LA    R7,APQHD_APQHD_LNG(,R4)                                  02570045
+         USING DSPAPQHP,R7                                              02580045
+*                                                                       02590023
+* Check PFA flag                                                        02600023
+*                                                                       02610023
+         OI    FLAGS,FoundPFA                                           02620023
+         PUT   PRINT,PRT2LINE     Base DB header line                   02630023
+         MVI   PRT1TEXT,C' '                                            02640023
+         MVC   PRT1TEXT+1(LPRT1TEXT-1),PRT1TEXT                         02650023
+         MVI   PRT1ANSI,C' '                                            02660023
+         MVC   PRT1LEN,=Y(PRT1HPL)                                      02670023
+         MVC   PRT1ZZ,=H'0'                                             02680023
+         MVC   PRT1HPNH,=CL8'DBName: '                                  02690023
+         MVC   PRT1HPDN,apqhp_HALDBname                                 02700023
+         MVC   PRT1HPP,=CL10' PartName:'                                02710023
+         MVC   PRT1HPPN,apqhp_Partname                                  02720023
+         MVC   PRT1HPIC,=CL10' PFA flag='                               02730023
+         TM    apqhp_AUFLAG,apqhp_PAFLG                                 02740026
+         JNO   HP_NO                                                    02750026
+HP_YES   DS    0H                                                       02760026
+         MVC   PRT1HPCT,=CL3'YES'                                       02770026
+         OI    FLAGS,PFAset                                             02780059
+         J     HP_PRINT                                                 02790026
+HP_NO    DS    0H                                                       02800026
+         MVC   PRT1HPCT,=CL3'NO '                                       02810026
+HP_PRINT DS    0H                                                       02820026
+         PUT   PRINT,PRT1LINE                                           02830023
+         MVI   PRT1TEXT,C' '                                            02840023
+         MVC   PRT1TEXT+1(LPRT1TEXT-1),PRT1TEXT                         02850023
+         MVI   PRT1ANSI,C' '                                            02860023
+PROCQHPD DS    0H                                                       02870023
+         ST    R7,SAVE2RG7                                              02880053
+         TM    FLAGS,PFAset                                             02890059
+         BO    HP_DONE                                                  02900059
+         L     R7,APQHD_DEPPTR                                          02910052
+         LTR   R7,R7                                                    02920051
+         BZ    HP_DONE                                                  02930051
+*        JAS   R8,SNAPR7                                                02940059
+         JAS   R8,PROCRI                                                02950059
+HP_DONE  DS    0H                                                       02960051
+         NI    FLAGS,255-PFAset                                         02970059
+         L     R7,SAVE2RG7                                              02980053
+         L     R4,APQHD_NEXTPTR                                         02990023
+         LTR   R4,R4                                                    03000023
+         JNZ   PROCQHP          zero NEXTPTR means end of partitions    03010023
+         DROP  R4,R7                                                    03020023
+         J     HD_NEXT                                                  03030053
+*                                                                       03040059
+* Handle the additional information pointers                            03050059
+*                                                                       03060059
+PROCRI   DS    0H                                                       03070059
+         STM   R7,R10,SAVERIRG                                          03080062
+         USING DSPAPQHD,R7                                              03090061
+         MVC   MINDAYS,=PL4'3650' Approx ten years                      03100073
+         MVC   WORKDATE,PYYYYDDD                                        03110073
+         CLC   =C'DSPAPQRI',apqhd_eyecatcher                            03120065
+         JNE   RI_DONE                                                  03130062
+         DROP  R7                                                       03140062
+         USING DSPAPQRI,R7                                              03150062
+         LA    R7,APQHD_APQHD_LNG(,R7)                                  03160062
+*                                                                       03170070
+* Timestamp format: 'yyyydddFhhmmssthmijuoooC'                          03180070
+* yyyy   == year                                                        03190070
+* ddd    == day                                                         03200070
+* hh     == hour (UTC)                                                  03210070
+* mm     == mins                                                        03220070
+* ss     == secs                                                        03230070
+* thmihu == tenths, hundredths, thousandths, etc.                       03240070
+* ooo    == quarter hour offset from UTC                                03250070
+*                                                                       03260070
+         L     R9,apqri_ICptr                                           03270061
+         DROP  R7                                                       03280065
+         OI    FLAGS,ICfound                                            03290075
+IC_LOOP  DS    0H                                                       03300065
+         LTR   R9,R9                                                    03310065
+         JZ    RI_DONE                                                  03320065
+         USING DSPAPQHD,R9                                              03330065
+         LA    R7,APQHD_APQHD_LNG(,R9)                                  03340065
+         USING DSPAPQIC,R7                                              03350065
+         MVC   SAVEICTS,apqic_startime                                  03360074
+         SP    WORKDATE,ICTSDATE                                        03370073
+         CP    WORKDATE,=P'635'                                         03380073
+         JL    THISYEAR                                                 03390073
+         SP    WORKDATE,=P'635'                                         03400073
+THISYEAR DS    0H                                                       03410073
+*        CP    WORKDATE,=P'9'                                           03420073
+         CP    WORKDATE,=P'3'    testing only                           03430073
+         JL    RESETDAT                                                 03440073
+         CP    WORKDATE,MINDAYS                                         03450073
+         BH    RESETDAT                                                 03460073
+         MVC   MINDAYS,WORKDATE                                         03470073
+RESETDAT DS    0H                                                       03480073
+         MVC   WORKDATE,PYYYYDDD                                        03490073
+         L     R9,APQHD_NEXTPTR                                         03500069
+         J     IC_LOOP                                                  03510065
+RI_DONE  DS    0H                                                       03520059
+*                                                                       03530073
+         TM    FLAGS,ICfound                                            03540075
+         JNO   NORIPRT                                                  03550075
+         MVI   PRT1TEXT,C' '                                            03560073
+         MVC   PRT1TEXT+1(LPRT1TEXT-1),PRT1TEXT                         03570073
+         MVI   PRT1ANSI,C' '                                            03580073
+         MVC   PRT1LEN,=Y(PRT1ICL)                                      03590073
+         MVC   PRT1ZZ,=H'0'                                             03600073
+         MVC   PRT1ICDB,apqic_DBname                                    03610073
+         MVC   PRT1ICDN,apqic_DDname                                    03620073
+         MVC   PRT1ICIC,=C'IC'                                          03630073
+         UNPK  PRT1ICT1(5),MINDAYS                                      03640079
+         OC    PRT1ICT1+4(1),=X'F0'                                     03650078
+         PUT   PRINT,PRT1LINE                                           03660073
+         MVI   PRT1TEXT,C' '                                            03670073
+         MVC   PRT1TEXT+1(LPRT1TEXT-1),PRT1TEXT                         03680073
+         MVI   PRT1ANSI,C' '                                            03690073
+NORIPRT  DS    0H                                                       03700075
+         NI    FLAGS,255-ICfound                                        03710075
+         LM    R7,R10,SAVERIRG                                          03720059
+         BR    R8                                                       03730059
+         DROP  R9                                                       03740063
+*                                                                       03750059
+* Snap rest of 4K page @ R7                                             03760059
+*                                                                       03770059
+SNAPR7   DS    0H                                                       03780059
+         STM   R7,R10,SAVEREGS                                          03790059
+         LR    R8,R7                                                    03800059
+         AHI   R8,4096                    We'll SNAP a 4K page          03810059
+         LG    R1,=XL8'FFFFFFFFFFFFF000'  round out to page boundary    03820059
+         NR    R7,R1                                                    03830059
+         NR    R8,R1                                                    03840059
+         AHI   R8,-1                      and back to current page      03850059
+         LA    R9,SNAP                                                  03860059
+         OPEN  (SNAP,OUTPUT),MF=(E,OPENLST),MODE=31                     03870059
+         SNAP  DCB=(R9),STORAGE=((R7),(R8))                             03880059
+         LTR   R15,R15                                                  03890059
+         JNZ   SNAPERR                                                  03900059
+         OI    CLOSLST,X'80'                                            03910059
+         CLOSE SNAP,MF=(E,CLOSLST),MODE=31                              03920059
+         LM    R7,R8,SAVEREGS                                           03930059
+         BR    R8                                                       03940059
+SNAPERR  DS    0H                                                       03950059
+         PUT   PRINT,SNAPF                                              03960059
+         LM    R7,R10,SAVEREGS                                          03970059
+         BR    R8                                                       03980059
+*                                                                       03990023
+* Good exit                                                             04000023
+*                                                                       04010023
+RETURN   DS    0H                                                       04020023
+         DSPAPI FUNC=STOPDBRC,                                         X04030023
+               TOKEN=DBRCTOK,                                          X04040023
+               RETCODE=RCODE,                                          X04050023
+               RSNCODE=RSN,                                            X04060023
+               MF=(E,DSPSTO,COMPLETE)                                   04070023
+         L     R5,RCODE                                                 04080023
+         LTR   R5,R5                                                    04090023
+         JZ    STOPOK                                                   04100023
+         PUT   PRINT,STOPF                                              04110023
+         JAS   R10,PRTRCRSN                                             04120028
+         CALL  CEE3ABD,(=A(ABENDCD+2),=F'0'),MF=(E,CALLLST)             04130023
+STOPOK   DS    0H                                                       04140023
+         PUT   PRINT,TRAILER                                            04150023
+         OI    CLOSLST,X'80'                                            04160023
+         CLOSE PRINT,MF=(E,CLOSLST),MODE=31                             04170023
+         STORAGE RELEASE,ADDR=((6)),LENGTH=4096                         04180023
+         TM    FLAGS,FoundPFA                                           04190023
+         JO    WARN                                                     04200023
+         CEETERM RC=0                                                   04210023
+WARN     DS    0H                                                       04220023
+         CEETERM RC=4                                                   04230023
+*                                                                       04240023
+* Bad exit set RC=8                                                     04250023
+*                                                                       04260023
+BADRTN   DS    0H                                                       04270023
+         DSPAPI FUNC=STOPDBRC,                                         X04280023
+               TOKEN=DBRCTOK,                                          X04290023
+               RETCODE=RCODE,                                          X04300023
+               RSNCODE=RSN,                                            X04310023
+               MF=(E,DSPSTO,COMPLETE)                                   04320023
+         L     R5,RCODE                                                 04330023
+         LTR   R5,R5                                                    04340023
+         JZ    BADSTPOK                                                 04350023
+         PUT   PRINT,STOPF                                              04360023
+         JAS   R10,PRTRCRSN                                             04370047
+         CALL  CEE3ABD,(=A(ABENDCD+3),=F'0'),MF=(E,CALLLST)             04380023
+BADSTPOK DS    0H                                                       04390023
+         PUT   PRINT,BADTRAIL                                           04400023
+         OI    CLOSLST,X'80'                                            04410023
+         CLOSE PRINT,MF=(E,CLOSLST),MODE=31                             04420023
+         STORAGE RELEASE,ADDR=((6)),LENGTH=4096                         04430023
+         CEETERM RC=8                                                   04440023
+         EJECT                                                          04450023
+         LTORG                                                          04460023
+*                                                                       04470023
+* Constants                                                             04480023
+*                                                                       04490023
+APIPRINT DC    C'APIPRINT'                                              04500023
+HEADER   DS    0H                                                       04510023
+         DC    Y(LHEADER)                                               04520023
+         DC    H'0'                                                     04530023
+         DC    C'1 Listing of databases with PFA flags'                 04540023
+LHEADER  EQU   *-HEADER                                                 04550023
+TRAILER  DS    0H                                                       04560023
+         DC    Y(LTRAILER)                                              04570023
+         DC    H'0'                                                     04580023
+         DC    C'0***  End of report  ***'                              04590023
+LTRAILER EQU   *-TRAILER                                                04600023
+BADTRAIL DS    0H                                                       04610023
+         DC    Y(LBADTRAIL)                                             04620023
+         DC    H'0'                                                     04630023
+         DC    C'-***  End of report : Progam ended with errors ***'    04640023
+LBADTRAIL EQU  *-BADTRAIL                                               04650023
+QUERYF   DS    0H                                                       04660023
+         DC    Y(LQUERYF)                                               04670023
+         DC    H'0'                                                     04680023
+         DC    C'-IMSL001E DSPAPI TYPE=DB,LOC=FIRST failed'             04690023
+LQUERYF  EQU   *-QUERYF                                                 04700023
+QUERYF1  DS    0H                                                       04710023
+         DC    Y(LQUERYF1)                                              04720023
+         DC    H'0'                                                     04730023
+         DC    C'-IMSL002E DSPAPI TYPE=DB,LOC=FIRST no data returned'   04740023
+LQUERYF1 EQU   *-QUERYF1                                                04750023
+QUERYF2  DS    0H                                                       04760023
+         DC    Y(LQUERYF2)                                              04770023
+         DC    H'0'                                                     04780023
+         DC    C'-IMSL003E DSPAPI TYPE=DB,LOC=NEXT failed'              04790023
+LQUERYF2 EQU   *-QUERYF2                                                04800023
+QUERYF3  DS    0H                                                       04810023
+         DC    Y(LQUERYF3)                                              04820023
+         DC    H'0'                                                     04830023
+         DC    C'-IMSL004E DSPAPI TYPE=DB,LOC=NEXT no data returned'    04840023
+LQUERYF3 EQU   *-QUERYF3                                                04850023
+STARTF   DS    0H                                                       04860023
+         DC    Y(LSTARTF)                                               04870023
+         DC    H'0'                                                     04880023
+         DC    C'0IMSL005T DSPAPI TYPE=STARTDBRC bad rc/rsn'            04890023
+LSTARTF  EQU   *-STARTF                                                 04900023
+STOPF    DS    0H                                                       04910023
+         DC    Y(LSTOPF)                                                04920023
+         DC    H'0'                                                     04930023
+         DC    C'0IMSL006T DSPAPI TYPE=STOPDBRC bad rc/rsn'             04940023
+LSTOPF   EQU   *-STOPF                                                  04950023
+PROCF    DS    0H                                                       04960023
+         DC    Y(LPROCF)                                                04970023
+         DC    H'0'                                                     04980023
+         DC    C'-IMSL007E invalid/unknown APQHD_EYECATCHER'            04990023
+LPROCF   EQU   *-PROCF                                                  05000023
+SNAPF    DS    0H                                                       05010028
+         DC    Y(LSNAPF)                                                05020028
+         DC    H'0'                                                     05030028
+         DC    C'-IMSL008E Bad return code from SNAP macro'             05040028
+LSNAPF   EQU   *-SNAPF                                                  05050028
+TRANTAB  DC    C'0123456789ABCDEF'                                      05060023
+PATTERN  DC    8X'0F'                                                   05070023
+*                                                                       05080023
+* Model DCB to copy to 24 bit                                           05090023
+*                                                                       05100023
+#PRINT   DCB   DDNAME=SYSPRINT,LRECL=133,RECFM=VBA,MACRF=PM,DSORG=PS    05110023
+LPRINT   EQU   *-#PRINT                                                 05120023
+#SNAP    DCB   DSORG=PS,RECFM=VBA,MACRF=W,DDNAME=SNAP,                 C05130027
+               LRECL=125,BLKSIZE=1632                                   05140027
+LSNAP    EQU   *-#SNAP                                                  05150027
+         LTORG                                                          05160023
+PPA      CEEPPA                                                         05170023
+         CEECAA                                                         05180023
+*                                                                       05190023
+* Working storage                                                       05200023
+*                                                                       05210023
+         CEEDSA                                                         05220023
+PYYYYDDD DS    PL4                                                      05230073
+SAVE1RG7 DS    F                                                        05240053
+SAVE2RG7 DS    F                                                        05250053
+SAVEREGS DS    4F                                                       05260059
+SAVERIRG DS    4F                                                       05270059
+SAVEICTS DS    XL12                                                     05280070
+         ORG   SAVEICTS                                                 05290070
+ICTSDATE DS    PL4                                                      05300070
+ICTSTIME DS    XL6                                                      05310070
+ICTSOFF  DS    PL2                                                      05320070
+         ORG                                                            05330070
+DBRCDBD  DS    CL8                                                      05340023
+MINDAYS  DS    PL4                                                      05350073
+WORKDATE DS    PL4                                                      05360073
+DBRCTOK  DS    F                                                        05370023
+DBRCOUT  DS    A                                                        05380023
+RCODE    DS    F                                                        05390023
+RSN      DS    F                                                        05400023
+FLAGS    DS    X                                                        05410023
+FoundPFA EQU   x'80'                                                    05420023
+PFAset   EQU   x'40'                                                    05430059
+ICfound  EQU   x'20'                                                    05440076
+Flag10   EQU   x'10'     Unused flag bit                                05450076
+Flag08   EQU   x'08'     Unused flag bit                                05460076
+Flag04   EQU   x'04'     Unused flag bit                                05470076
+Flag02   EQU   x'02'     Unused flag bit                                05480076
+Flag01   EQU   x'01'     Unused flag bit                                05490076
+PRT1LINE DS    0H                                                       05500023
+PRT1LEN  DS    Y                                                        05510023
+PRT1ZZ   DS    H                                                        05520023
+PRT1ANSI DS    C                                                        05530023
+PRT1TEXT DS    CL126                                                    05540023
+LPRT1TEXT EQU  *-PRT1TEXT                                               05550023
+         ORG   PRT1TEXT                                                 05560023
+PRT1DBNH DS    CL8                                                      05570023
+PRT1DBN  DS    CL8                                                      05580023
+PRT1DBT  DS    CL14                                                     05590023
+         DS    CL18                                                     05600023
+PRT1DBPF DS    CL10                                                     05610023
+PRT1DBCT DS    CL3                                                      05620023
+PRT1DBL  EQU   *-PRT1LINE                                               05630023
+         ORG   PRT1TEXT                                                 05640023
+PRT1FPNH DS    CL8                                                      05650023
+PRT1FPN  DS    CL8                                                      05660023
+PRT1FPT  DS    CL14                                                     05670023
+         DS    CL18                                                     05680023
+PRT1FPPF DS    CL10                                                     05690023
+PRT1FPCT DS    CL3                                                      05700023
+PRT1FPL  EQU   *-PRT1LINE                                               05710023
+         ORG   PRT1TEXT                                                 05720023
+PRT1HPNH DS    CL8                                                      05730023
+PRT1HPDN DS    CL8                                                      05740023
+PRT1HPT  DS    CL14                                                     05750023
+PRT1HPP  DS    CL10                                                     05760023
+PRT1HPPN DS    CL8                                                      05770023
+PRT1HPIC DS    CL10                                                     05780023
+PRT1HPCT DS    CL3                                                      05790023
+PRT1HPL  EQU   *-PRT1LINE                                               05800023
+         ORG   PRT1TEXT                                                 05810065
+PRT1ICDB DS    CL8                                                      05820065
+         DS    C                                                        05830073
+PRT1ICDN DS    CL8                                                      05840065
+         DS    C                                                        05850073
+PRT1ICIC DS    CL2                                                      05860065
+         DS    C                                                        05870073
+PRT1ICT1 DS    XL12                                                     05880068
+         DS    C                                                        05890073
+PRT1ICT2 DS    XL12                                                     05900068
+         DS    C                                                        05910073
+PRT1ICL  EQU   *-PRT1LINE                                               05920065
+         ORG                                                            05930023
+PRT2LINE DS    0H                                                       05940023
+PRT2LEN  DS    Y                                                        05950023
+PRT2ZZ   DS    H                                                        05960023
+PRT2ANSI DS    C                                                        05970023
+PRT2TEXT DS    CL126                                                    05980023
+         ORG   PRT2TEXT                                                 05990023
+PRT2HBNH DS    CL8                                                      06000023
+PRT2HBN  DS    CL8                                                      06010023
+PRT2HBT  DS    CL11                                                     06020023
+PRT2HBL  EQU   *-PRT2LINE                                               06030023
+         ORG                                                            06040023
+         DSPAPI FUNC=STARTDBRC,MF=(L,DSPSTA)                            06050023
+         DSPAPI FUNC=STOPDBRC,MF=(L,DSPSTO)                             06060023
+         DSPAPI FUNC=QUERY,TYPE=DB,MF=(L,DSPDBD)                        06070023
+CALLLST  CALL  ,(,,,,,),MF=L                                            06080023
+         DSPAPI FUNC=DSECT                                              06090023
+*        PRINT NOGEN                                                    06100048
+* TYPE=DB header                                                        06110023
+         DSPAPQHD                                                       06120023
+* TYPE=DB full function record                                          06130023
+         DSPAPQDB                                                       06140023
+* TYPE=DB fast path record                                              06150023
+         DSPAPQFD                                                       06160023
+* TYPE=DB HALDB base record                                             06170023
+         DSPAPQHB                                                       06180023
+* TYPE=DB HALDB partition record                                        06190023
+         DSPAPQHP                                                       06200023
+* TYPE=DB IC image copy record                                          06210049
+         DSPAPQIC                                                       06220049
+* TYPE=DB                                                               06230058
+         DSPAPQRI                                                       06240058
+R0       EQU   0                                                        06250023
+R1       EQU   1                                                        06260023
+R2       EQU   2                                                        06270023
+R3       EQU   3                                                        06280023
+R4       EQU   4                                                        06290023
+R5       EQU   5                                                        06300023
+R6       EQU   6                                                        06310023
+R7       EQU   7                                                        06320023
+R8       EQU   8                                                        06330023
+R9       EQU   9                                                        06340023
+R10      EQU   10                                                       06350023
+R11      EQU   11                                                       06360023
+R12      EQU   12                                                       06370023
+R13      EQU   13                                                       06380023
+R14      EQU   14                                                       06390023
+R15      EQU   15                                                       06400023
+*                                                                       06410023
+* Map 24 bit storage                                                    06420023
+*                                                                       06430023
+L24      DSECT                                                          06440023
+OPENLST  OPEN  (PRINT,OUTPUT),MF=L,MODE=31                              06450023
+CLOSLST  CLOSE PRINT,MF=L,MODE=31                                       06460023
+PRINT    DCB   DDNAME=SYSPRINT,LRECL=133,RECFM=VBA,MACRF=PM,DSORG=PS    06470023
+SNAP     DCB   DSORG=PS,RECFM=VBA,MACRF=W,DDNAME=SNAP,                 C06480027
+               LRECL=125,BLKSIZE=1632                                   06490027
+         END                                                            06500023
+
