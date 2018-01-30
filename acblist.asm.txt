@@ -1,0 +1,422 @@
+         PRINT GEN                                                      00010000
+* NOTE: THIS PROGRAM IS IN CBT FILE 688 AT                            * 00020000
+*       HTTP://WWW.CBTTAPE.ORG                                        * 00030000
+*********************************************************************** 00040000
+* Title : Print ACBLIB directory in a sensible form                   * 00050000
+*                                                                     * 00060000
+* Submitter : Dougie Lawson                                           * 00070000
+*             Consultant Systems Programmer                           * 00080000
+*             IBM UK                                                  * 00090000
+*                                                                     * 00100000
+* Phone : +44 1252 559379                                      @DGL03 * 00110000
+*                                                                     * 00120000
+* JCL:-                                                               * 00130000
+*                                                                     * 00140000
+*    //       EXEC PGM=ACBLIST                                        * 00150000
+*    //STEPLIB  DD DSN=***************,DISP=SHR                       * 00160000
+*    //ACBLIB   DD DSN=********.ACBLIB,DISP=SHR                       * 00170000
+*    //SYSPRINT DD SYSOUT=*,LRECL=133,BLKSIZE=1334,RECFM=VBA   @DGL01 * 00180000
+*    //SYSUDUMP DD SYSOUT=*                                           * 00190000
+*                                                                     * 00200000
+* Amended : Neil Price  TNT Express Worldwide       29/11/1996 ** NRP * 00210000
+*           - Initialise print-line to spaces                         * 00220000
+*           - Removed IMS 1.2, added 3.x (not documented in ACBDIR)   * 00230000
+*           - Changed DMB size calulation from MH to SLL              * 00240000
+*           - Adjusted PSB size multiplier to 16 to agree with ACBGEN * 00250000
+*              as per PDIRSHFT in macro DFSPDIR                       * 00260000
+*           - Added storage sizes to report                           * 00270000
+*           - Minor cosmetic changes incl. added comments             * 00280000
+* Amended : Neil Price  TNT Express Worldwide       24/05/2001 ** NRP1* 00290000
+*           - Adjusted PSB size multiplier to 64 for V7 only          * 00300000
+*              as per PDIRSHFT in macro DFSPDIR                       * 00310000
+*           - Removed IMS 1.3 and 2.2, added 6.1 and 7.1              * 00320000
+* Amended : Dougie Lawson, IBM                      03/02/2003 @DGL01 * 00330000
+*           - PHDAM, PHIDAM, PSINDEX support                   @DGL01 * 00340000
+*           - removed IMS 3.1, 4.1                             @DGL01 * 00350000
+*           - added IMS 8.1                                    @DGL01 * 00360000
+*           - renumbered source code                           @DGL01 * 00370000
+* Amended : Dougie Lawson, IBM                      09/09/2004 @DGL02 * 00380000
+*           - added IMS 9.1                                    @DGL02 * 00390000
+* Amended : Gary Jacek                                                * 00400000
+*           - added IMS 10.1                                          * 00410000
+* Amended : Dougie Lawson, IBM                      22/04/2009 @DGL03 * 00420000
+*           - added IMS V11                                    @DGL03 * 00430000
+*           - removed all the releases up to V7                @DGL03 * 00440000
+*             minimum version is V7 now                        @DGL03 * 00450000
+* Amended : Dougie Lawson, IBM                      09/03/2011 @DGL04 * 00460000
+*           - added IMS V12                                    @DGL04 * 00470000
+*           - removed everything for V7                        @DGL04 * 00480000
+*             minimum version is V8 now                        @DGL04 * 00490000
+*             fixed an ABEND0C4                                @DGL04 * 00500000
+* Amended : Dougie Lawson, IBM                      15/06/2011 @DGL05 * 00510000
+*           - Added better support for PSINDEX                 @DGL05 * 00520000
+* Amended : Dougie Lawson, IBM                      21/01/2013 @DGL06 * 00530000
+*           - added IMS V13                                    @DGL06 * 00540000
+*           - removed everything for V8                        @DGL06 * 00550000
+*             minimum version is V9 now                        @DGL06 * 00560000
+*           - changed to relative branches                     @DGL06 * 00570000
+*           - added a footer to the sysprint                   @DGL06 * 00580000
+*           - PSB size multiplier is now fixed at 64           @DGL06 * 00590000
+* Amended : Dougie Lawson, Darkside Logic (One) Ltd 17/05/2016 @DGL07 * 00600000
+*           - added IMS V14                                    @DGL07 * 00610000
+*           - removed everything for V9                        @DGL07 * 00620000
+*           - renumbered source code                           @DGL07 * 00630000
+*             minimum version is V10 now                       @DGL07 * 00640000
+*********************************************************************** 00650000
+        MACRO                                                           00660000
+&LAB    MVC2  &TARGET,&SOURCE                                           00670000
+&LAB    MVC   &TARGET,&SOURCE  X'D2nn',S(&TARGET)',S(&SOURCE)           00680000
+        ORG   *-6               BACK UP TO FIRST BYTE OF INSTRUCTION    00690000
+        DC    AL1(X'D2',L'&SOURCE-1)  FIRST 2 BYTES OF INSTRUCTION      00700000
+        ORG   *+4               STEP TO NEXT INSTRUCTION                00710000
+        AIF   (L'&TARGET GE L'&SOURCE).DONE                             00720000
+        MNOTE *,'MVC2: LENGTH OF ''&SOURCE'' GREATER THAN LENGTH OF ''&*00730000
+               TARGET''.'                                               00740000
+.DONE   MEND                                                            00750000
+         YREGS                                                 ** NRP   00760000
+ACBLIST  CSECT                                                          00770000
+ACBLIST  AMODE 31                                                       00780000
+ACBLIST  RMODE ANY                                                      00790000
+         SYSSTATE ARCHLVL=2                                    , @DGL06 00800000
+         BAKR  R14,0                                                    00810000
+         USING ACBLIST,R12                                              00820000
+         LR    R12,R15                                                  00830000
+         STORAGE OBTAIN,LENGTH=4096,LOC=BELOW                           00840000
+         USING DSA,R13                                                  00850000
+         LR    R13,R1                                                   00860000
+         LA    R2,AC2LISTB                                              00870000
+         L     R3,=A(AC2LISTL)                                          00880000
+         LA    R4,AC3LISTB                                              00890000
+         L     R5,=A(AC3LISTL)                                          00900000
+         MVCL  R4,R2                                                    00910000
+         MVI   PRTLINE,C' '                                    ** NRP   00920000
+         MVC   PRTLINE+1(LPRTLINE-1),PRTLINE                   ** NRP   00930000
+         LA    R2,DIRJFCBA                                              00940000
+         ST    R2,DIREXLST                                              00950000
+         MVI   DIREXLST,X'07'                                           00960000
+         LA    R2,DIREXLST                                              00970000
+         STCM  R2,B'0111',DIRBLK+37                                     00980000
+         OI    OPENLIST+4,X'80'                                         00990000
+         OPEN  (DIRBLK,,SYSPRINT,OUTPUT),MF=(E,OPENLIST)                01000000
+         TM    SYSPRINT+48,X'10'                                        01010000
+         JO    SYSPOK                                                   01020000
+         WTO   MF=(E,MSG1)                                              01030000
+         OI    CLSLIST,X'80'                                            01040000
+         CLOSE (DIRBLK),MF=(E,CLSLIST)                                  01050000
+         LA    R15,16                                                   01060000
+         PR                                                             01070000
+SYSPOK   DS    0H                                                       01080000
+         TIME  DEC                                                      01090000
+         STM   R0,R1,TIMEDATE                                           01100000
+         UNPK  UNPKTIME,TIMEDATE                                        01110000
+         TR    HDRDATE,UNPKTIME                                         01120000
+         MVI   HDRANSI,C'1'                                             01130000
+         OI    OPENLIST,X'80'                                           01140000
+         RDJFCB (DIRBLK),MF=(E,OPENLIST)                                01150000
+         MVC   HDRDSN,DIRJFCBA                                          01160000
+         PUT   SYSPRINT,HDRLINE                                         01170000
+         PUT   SYSPRINT,TITLE                                           01180000
+         MVI   PRTANSI,C'0'                                             01190000
+         XC    LINECNT,LINECNT                                          01200000
+         MVC2  PRTLINE,=Y(LPRTLINE)                                     01210000
+         MVC2  PRTLINE+2,=Y(0)         SET PRINT REC ZZ        , @DGL04 01220000
+         SLR   R2,R2                                                    01230000
+EACHDIR  DS    0H                                                       01240000
+         GET   DIRBLK,INARE             READ A RECORD                   01250000
+         LA    R7,INARE+2               SKIP LENGTH NIBBL               01260000
+         LA    R2,INARE                                                 01270000
+         AH    R2,INARE                 ADD THE LENGTH.                 01280000
+EACHMEM  DS    0H                                                       01290000
+         CLC   LASTMEM,0(R7)            HIGH VALUES? (END OF DIRECTORY) 01300000
+         JE    ENDIT                    YES                             01310000
+         MVC   PRTNAME,0(R7)                                            01320000
+         BRAS  R9,EACHBLK                                               01330000
+         CR    R2,R7                    IS NEXT BLOCK IN BUFFER         01340000
+         JNH   EACHDIR                  NO GET NEXT DIRECTORY BLOCK     01350000
+         J     EACHMEM                  YES PROCESS NEXT MEMBER         01360000
+ENDIT    DS    0H                                                       01370000
+         PUT   SYSPRINT,FOOTER          Print end of report    , @DGL06 01380000
+         OI    CLSLIST+4,X'80'                                          01390000
+         CLOSE (DIRBLK,,SYSPRINT),MF=(E,CLSLIST)                        01400000
+         PR                                                             01410000
+EACHBLK  DS    0H                                                       01420000
+         USING ACBNTRY,R7                                               01430000
+         UNPK  UNPADATE,ACBDATE                                         01440000
+         MVC   PRTDATE,PATADATE                                         01450000
+         TR    PRTDATE,UNPADATE                                         01460000
+         MVO   WKATIME,ACBTIME                                          01470000
+         OI    WKATIME+4,X'0F'                                          01480000
+         UNPK  UNPATIME,WKATIME                                         01490000
+         MVC   PRTTIME,PATATIME                                         01500000
+         TR    PRTTIME,UNPATIME                                         01510000
+         CLI   ACBRLVL,ACBREL14                               , @DGL07  01520000
+         JE    IMS14                                          , @DGL07  01530000
+         CLI   ACBRLVL,ACBREL13                               , @DGL06  01540000
+         JE    IMS13                                          , @DGL06  01550000
+         CLI   ACBRLVL,ACBREL12                               , @DGL04  01560000
+         JE    IMS12                                          , @DGL04  01570000
+         CLI   ACBRLVL,ACBREL11                               , @DGL03  01580000
+         JE    IMS11                                          , @DGL03  01590000
+         CLI   ACBRLVL,ACBREL10                               , @DGL02  01600000
+         JE    IMS101                                         , @DGL02  01610000
+*        CLI   ACBRLVL,ACBREL91 lines deleted by =========>   , @DGL07  01620000
+*        JE    IMS91            lines deleted by =========>   , @DGL07  01630000
+*        CLI   ACBRLVL,ACBREL81 lines deleted by =========>   , @DGL06  01640000
+*        BE    IMS81            lines deleted by =========>   , @DGL06  01650000
+         MVC   PRTRELL,=C'UNK '                                         01660000
+         J     RELDONE                                        , @DGL07  01670000
+IMS14    DS    0H                                             , @DGL07  01680000
+         MVC   PRTRELL,=C'14.1'                               , @DGL07  01690000
+         J     RELDONE                                        , @DGL06  01700000
+IMS13    DS    0H                                             , @DGL06  01710000
+         MVC   PRTRELL,=C'13.1'                               , @DGL06  01720000
+*        MVI   PSBMULT+1,64  All versions now have mult=64.   , @DGL06  01730000
+         J     RELDONE                                        , @DGL06  01740000
+IMS12    DS    0H                                             , @DGL04  01750000
+         MVC   PRTRELL,=C'12.1'                               , @DGL04  01760000
+*        MVI   PSBMULT+1,64  All versions now have mult=64.   , @DGL06  01770000
+         J     RELDONE                                        , @DGL04  01780000
+IMS11    DS    0H                                             , @DGL03  01790000
+         MVC   PRTRELL,=C'11.1'                               , @DGL03  01800000
+*        MVI   PSBMULT+1,64  All versions now have mult=64.   , @DGL06  01810000
+         J     RELDONE                                        , @DGL03  01820000
+IMS101   DS    0H                                             , @DGL02  01830000
+         MVC   PRTRELL,=C'10.1'                               , @DGL02  01840000
+*        MVI   PSBMULT+1,64  All versions now have mult=64.   , @DGL06  01850000
+*        J     RELDONE                                        , @DGL07  01860000
+*MS91    DS    0H                                             , @DGL07  01870000
+*        MVC   PRTRELL,=C'9.1 '                               , @DGL07  01880000
+*        MVI   PSBMULT+1,64  All versions now have mult=64.   , @DGL06  01890000
+*        B     RELDONE          lines deleted by =========>   , @DGL06  01900000
+*MS81    DS    0H               lines deleted by =========>   , @DGL06  01910000
+*        MVC   PRTRELL,=C'8.1 ' lines deleted by =========>   , @DGL06  01920000
+*        MVI   PSBMULT+1,64     lines deleted by =========>   , @DGL06  01930000
+RELDONE  DS    0H                                                       01940000
+         MVC   PRTTYPE,=CL8' '                                          01950000
+         TM    ACBFLAG,ACBDMB                                           01960000
+         JZ    PSB                                                      01970000
+         MVC2  PRTTYPE,=C'DMB'                                          01980000
+         TM    ACBFLAG,ACBMSDB                                          01990000
+         JO    MSDB                                                     02000000
+         TM    ACBFLAG,ACBDEDB                                          02010000
+         JO    DEDB                                                     02020000
+         TM    ACB2FLG,ACBHDPD                                , @DGL03  02030000
+         JO    PHDAM                                          , @DGL01  02040000
+         TM    ACB2FLG,ACBHIPD                                , @DGL03  02050000
+         JO    PHIDAM                                         , @DGL01  02060000
+*                                                             , @DGL05  02070000
+* if 2PDB is set, but HDPD and HIPD are reset                 , @DGL05  02080000
+* then we'll assume this is a PSINDEX                         , @DGL05  02090000
+*                                                             , @DGL05  02100000
+         TM    ACB2FLG,ACB2PDB                                , @DGL03  02110000
+         JO    PSINDEX                                        , @DGL05  02120000
+         MVC   PRTDMBT,=C'DL/1'                                         02130000
+         J     TYPEDONE                                                 02140000
+*DB      DS    0H               lines deleted by =========>   , @DGL05  02150000
+*        MVC   PRTDMBT,=C'PDB ' lines deleted by =========>   , @DGL05  02160000
+*        B     TYPEDONE         lines deleted by =========>   , @DGL05  02170000
+PHDAM    DS    0H                                             , @DGL01  02180000
+         MVC2  PRTTYPE,=C'PHDAM'                              , @DGL01  02190000
+         J     TYPEDONE                                       , @DGL01  02200000
+PHIDAM   DS    0H                                             , @DGL01  02210000
+         MVC2  PRTTYPE,=C'PHIDAM'                             , @DGL01  02220000
+         J     TYPEDONE                                       , @DGL01  02230000
+PSINDEX  DS    0H                                             , @DGL05  02240000
+         MVC2  PRTTYPE,=C'PSINDEX'                            , @DGL05  02250000
+         J     TYPEDONE                                       , @DGL05  02260000
+MSDB     DS    0H                                                       02270000
+         MVC   PRTDMBT,=C'MSDB'                                         02280000
+         J     TYPEDONE                                                 02290000
+DEDB     DS    0H                                                       02300000
+         MVC   PRTDMBT,=C'DEDB'                                         02310000
+         J     TYPEDONE                                                 02320000
+PSB      DS    0H                                                       02330000
+         MVC2  PRTTYPE,=C'PSB'                                          02340000
+TYPEDONE DS    0H                                                       02350000
+* FORMAT TTR                                                   ** NRP   02360000
+         XC    WORKA1,WORKA1                                            02370000
+         MVC   WORKA1+1,ACBTTR                                          02380000
+         MVO   WORKA2,WORKA1                                            02390000
+         UNPK  WORKA3,WORKA2                                            02400000
+         NC    WORKA3,PATTERN                                           02410000
+         TR    WORKA3,TRANTAB                                           02420000
+         MVC   PRTTTR,WORKA3+3                                          02430000
+         LH    R4,ACBSIZE                                               02440000
+         TM    ACBFLAG,ACBDMB           Is it a DMB?           ** NRP1  02450000
+         JZ    PSBSTOR                  No - it's a PSB        ** NRP1  02460000
+* Process DMB                                                  ** NRP1  02470000
+         MHI   R4,+8                                           , @DGL06 02480000
+         CVD   R4,PACKSIZE                                              02490000
+         UNPK  PRTSIZE,PACKSIZE+4                                       02500000
+         OI    PRTSIZE+7,X'F0'                                          02510000
+         MVC   PRTCSA,=CL8' '                                  ** NRP   02520000
+         MVC   PRTSAS,=CL8' '                                  ** NRP   02530000
+         MVC   PRTPSBW,=CL8' '                                 ** NRP   02540000
+         J     PRTDONE                                         ** NRP   02550000
+* Process PSB                                                  ** NRP1  02560000
+PSBSTOR  DS    0H                                              ** NRP   02570000
+         MHI   R4,+64        All versions now have mult=64.    , @DGL06 02580000
+         CVD   R4,PACKSIZE                                     ** NRP1  02590000
+         UNPK  PRTSIZE,PACKSIZE+4                              ** NRP1  02600000
+         OI    PRTSIZE+7,X'F0'                                 ** NRP1  02610000
+* CSA SIZE                                                     ** NRP   02620000
+         LH    R5,ACBPCBS                                      ** NRP   02630000
+         MHI   R5,+64        All versions now have mult=64.    , @DGL06 02640000
+         CVD   R5,PACKSIZE                                     ** NRP   02650000
+         UNPK  PRTCSA,PACKSIZE+4                               ** NRP   02660000
+         OI    PRTCSA+7,X'F0'                                  ** NRP   02670000
+* SAS SIZE                                                     ** NRP   02680000
+         SR    R4,R5                                           ** NRP   02690000
+         CVD   R4,PACKSIZE                                     ** NRP   02700000
+         UNPK  PRTSAS,PACKSIZE+4                               ** NRP   02710000
+         OI    PRTSAS+7,X'F0'                                  ** NRP   02720000
+* PSBW SIZE                                                    ** NRP   02730000
+         LH    R4,ACBXWA                                       ** NRP   02740000
+         MHI   R4,+64        All versions now have mult=64.    , @DGL06 02750000
+         CVD   R4,PACKSIZE                                     ** NRP   02760000
+         UNPK  PRTPSBW,PACKSIZE+4                              ** NRP   02770000
+         OI    PRTPSBW+7,X'F0'                                 ** NRP   02780000
+  SPACE                                                      , @DGL01   02790000
+PRTDONE  DS    0H                                              ** NRP   02800000
+         BRAS  R10,PRINT                                                02810000
+         AH    R7,=Y(ACBDSLN)                                           02820000
+         BR    R9                                                       02830000
+         DROP  R7                                                       02840000
+* PRINT Subroutine                                             ** NRP   02850000
+PRINT    DS    0H                                                       02860000
+         PUT   SYSPRINT,PRTLINE                                         02870000
+         MVI   PRTANSI,C' '                                             02880000
+         LH    R3,LINECNT                                               02890000
+         AHI   R3,+1                                                    02900000
+         STH   R3,LINECNT                                               02910000
+         CHI   R3,+50                                                   02920000
+         JNL   PRINTHDR                                                 02930000
+         BR    R10                                                      02940000
+PRINTHDR DS    0H                                                       02950000
+         PUT   SYSPRINT,HDRLINE                                         02960000
+         PUT   SYSPRINT,TITLE                                           02970000
+         MVI   PRTANSI,C'0'                                             02980000
+         XC    LINECNT,LINECNT                                          02990000
+         BR    R10                                                      03000000
+  SPACE                                                      , @DGL01   03010000
+PATADATE DC    X'000105020304'                                          03020000
+PATATIME DC    X'0001080203080405090607'                                03030000
+PATTERN  DC    9X'0F'                                                   03040000
+TRANTAB  DC    C'0123456789ABCDEF'                                      03050000
+LASTMEM  DC    X'FFFFFFFFFFFFFFFF'                                      03060000
+MSG1     WTO   '*** SYSPRINT DD OPEN FAILURE, RUN ABANDONED ***',      *03070000
+               ROUTCDE=11,MF=L                                          03080000
+FOOTER   DC    Y(LFOOTER),H'0'                                 , @DGL06 03090000
+         DC    C'0*** END OF REPORT ***'                       , @DGL06 03100000
+LFOOTER  EQU   *-FOOTER                                        , @DGL06 03110000
+TITLE    DC    Y(LTITLE),H'0'                                           03120000
+         DC    C'-'                                                     03130000
+         DC    CL8'ACB NAME'                                            03140000
+         DC    CL4' '                                                   03150000
+         DC    CL6' TTR  '                                              03160000
+         DC    CL2' '                                                   03170000
+         DC    CL8'ACB-TYPE'                                            03180000
+         DC    CL2' '                                                   03190000
+         DC    CL19' DATE     TIME'                                     03200000
+         DC    CL2' '                                                   03210000
+         DC    CL8' SIZE '                                              03220000
+         DC    CL2' '                                                   03230000
+         DC    CL3'REL'                                                 03240000
+         DC    CL2' '                                                   03250000
+         DC    CL8' PSBW '                                              03260000
+         DC    CL2' '                                                   03270000
+         DC    CL8' CSA  '                                              03280000
+         DC    CL2' '                                                   03290000
+         DC    CL8' SAS  '                                              03300000
+LTITLE   EQU   *-TITLE                                                  03310000
+         DS    0D                                                       03320000
+AC2LISTB EQU   *                                                        03330000
+         DCB   DDNAME=SYSPRINT,DSORG=PS,MACRF=PM,RECFM=VBA              03340000
+         DCB   DDNAME=ACBLIB,DSORG=PS,RECFM=U,LRECL=256,MACRF=(GM),    C03350000
+               EODAD=ENDIT                                              03360000
+*SBMULT  DC    H'16'                                           ** NRP1  03370000
+#DRLINE  DC    Y(L#DRLINE),H'0'                                         03380000
+         DS    C' '                                                     03390000
+         DC    C' '                                                     03400000
+         DC    X'00011002031004050F0F0A0B110C0D0E'                      03410000
+         DC    C' - ACB DIRECTORY LIST FOR LIBRARY - '                  03420000
+         DC    CL44' '                                                  03430000
+L#DRLINE EQU   *-#DRLINE                                                03440000
+         DC    CL15' ',C' :.'                                           03450000
+         DC    CL5' ',C'.'                                              03460000
+         DC    CL8' ',C':.'                                             03470000
+AC2LISTL EQU   *-AC2LISTB                                               03480000
+         LTORG                                                          03490000
+DSA      DSECT                                                          03500000
+         DS    18F                                                      03510000
+AC3LIST  EQU   *                                                        03520000
+TIMEDATE DS    PL8                                                      03530000
+PACKSIZE DS    2F                                                       03540000
+WKATIME  DC    CL5' '                                                   03550000
+WORKA1   DS    F                                                        03560000
+WORKA2   DS    XL5                                                      03570000
+WORKA3   DS    XL9                                                      03580000
+LINECNT  DS    H                                                        03590000
+OPENLIST OPEN  (DIRBLK,,SYSPRINT,OUTPUT),MF=L                           03600000
+CLSLIST  CLOSE (DIRBLK,,SYSPRINT),MF=L                                  03610000
+DIREXLST DS    F                                                        03620000
+DIRJFCBA DS    0F,176C                                                  03630000
+         DS    0D                                                       03640000
+AC3LISTB EQU   *                                                        03650000
+SYSPRINT DCB   DDNAME=SYSPRINT,DSORG=PS,MACRF=PM,RECFM=VBA              03660000
+DIRBLK   DCB   DDNAME=ACBLIB,DSORG=PS,RECFM=U,LRECL=256,MACRF=(GM),    C03670000
+               EODAD=ENDIT                                              03680000
+*SBMULT  DC    H'16'                                           ** NRP1  03690000
+HDRLINE  DC    H'0',H'0'                                                03700000
+HDRANSI  DS    C                                                        03710000
+         DC    C' '                                                     03720000
+HDRDATE  DC    X'00011002031004050F0F0A0B110C0D0E'                      03730000
+         DC    C' - ACB DIRECTORY LIST FOR LIBRARY - '                  03740000
+HDRDSN   DC    CL44' '                                                  03750000
+UNPKTIME DC    CL15' ',C' :.'                                           03760000
+UNPADATE DC    CL5' ',C'.'                                              03770000
+UNPATIME DC    CL8' ',C':.'                                             03780000
+AC3LISTL EQU   *-AC3LISTB                                               03790000
+PRTLINE  DC    H'0',H'0'                                                03800000
+PRTANSI  DS    C                                                        03810000
+PRTNAME  DS    CL8                                                      03820000
+         DS    CL4                                                      03830000
+PRTTTR   DS    CL6                                                      03840000
+         DS    CL2                                                      03850000
+PRTTYPE  DS    0CL8                                            ** NRP   03860000
+         DS    CL4                                             ** NRP   03870000
+PRTDMBT  DS    CL4                                                      03880000
+         DS    CL2                                                      03890000
+PRTDATE  DS    CL6                                                      03900000
+         DS    CL2                                                      03910000
+PRTTIME  DS    CL11                                                     03920000
+         DS    CL2                                                      03930000
+PRTSIZE  DS    CL8                                                      03940000
+         DS    CL2                                                      03950000
+PRTRELL  DS    CL4                                                      03960000
+         DS    CL1                                             ** NRP   03970000
+PRTPSBW  DS    CL8                                             ** NRP   03980000
+         DS    CL2                                             ** NRP   03990000
+PRTCSA   DS    CL8                                             ** NRP   04000000
+         DS    CL2                                             ** NRP   04010000
+PRTSAS   DS    CL8                                             ** NRP   04020000
+LPRTLINE EQU   *-PRTLINE                                                04030000
+         DS    0F                                            , @DGL01   04040000
+INARE    DC    256C' '                                                  04050000
+WKARELEN EQU   *-DSA                                                    04060000
+         ACBDIR DSECT=YES,PREFIX=ACB                                    04070000
+*CBREL51 EQU   X'50'                                                    04080000
+*CBREL61 EQU   X'61'                                           ** NRP1  04090000
+*CBREL71 EQU   X'71'                                           ** NRP1  04100000
+*CBREL81 EQU   X'81'                                         , @DGL01   04110000
+*CBREL91 EQU   X'91'                                         , @DGL02   04120000
+ACBREL10 EQU   X'A1'                                         , @DGL02   04130000
+ACBREL11 EQU   X'B1'                                         , @DGL03   04140000
+ACBREL12 EQU   X'C1'                                         , @DGL04   04150000
+ACBREL13 EQU   X'D1'                                         , @DGL06   04160000
+ACBREL14 EQU   X'E1'                                         , @DGL07   04170000
+         END                                                            04180000
+ PUNCH ' IDENTIFY ACBLIST(''ACBLIST IMS V14.1 &SYSDATE &SYSTIME'') '    04190000
+ PUNCH ' ENTRY    ACBLIST'                                              04200000
+ PUNCH ' NAME     ACBLIST(R)'                                           04210000
+         END                                                            04230000

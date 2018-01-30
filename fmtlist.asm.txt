@@ -1,0 +1,419 @@
+         PRINT GEN                                                      00010000
+*********************************************************************** 00020000
+* Title : Print FMTLIB directory in a sensible form                   * 00030000
+*                                                                     * 00040000
+* Submitter : Dougie Lawson                                           * 00050000
+*                                                                     * 00060000
+* Phone : +44                                                         * 00070000
+*                                                                     * 00080000
+* JCL:-                                                               * 00090000
+*                                                                     * 00100000
+*    //       EXEC PGM=FMTLIST                                        * 00110000
+*    //STEPLIB  DD DSN=***************,DISP=SHR                       * 00120000
+*    //FMTLIB   DD DSN=********.FORMAT,DISP=SHR                       * 00130032
+*    //SYSPRINT DD SYSOUT=*,LRECL=133,BLKSIZE=1334,RECFM=VBA          * 00140025
+*    //SYSUDUMP DD SYSOUT=*                                           * 00150000
+*                                                                     * 00160000
+*********************************************************************** 00170000
+        MACRO                                                           00180000
+&LAB    MVC2  &TARGET,&SOURCE                                           00190000
+&LAB    MVC   &TARGET,&SOURCE  X'D2nn',S(&TARGET)',S(&SOURCE)           00200000
+        ORG   *-6               BACK UP TO FIRST BYTE OF INSTRUCTION    00210000
+        DC    AL1(X'D2',L'&SOURCE-1)  FIRST 2 BYTES OF INSTRUCTION      00220000
+        ORG   *+4               STEP TO NEXT INSTRUCTION                00230000
+        AIF   (L'&TARGET GE L'&SOURCE).DONE                             00240000
+        MNOTE *,'MVC2: LENGTH OF ''&SOURCE'' GREATER THAN LENGTH OF ''&*00250000
+               TARGET''.'                                               00260000
+.DONE   MEND                                                            00270000
+         YREGS                                                          00280000
+FMTLIST  CSECT                                                          00290000
+FMTLIST  AMODE 31                                                       00300011
+FMTLIST  RMODE ANY                                                      00310011
+         J     ENDEYES                                                  00320011
+EYES     DC    YL1(EYELEN)                                              00330016
+         DC    C'FMTLIST &SYSDATE &SYSTIME'                             00340013
+EYELEN   EQU   *-EYES                                                   00350011
+ENDEYES  DS    0H                                                       00360011
+         SYSSTATE ARCHLVL=2                                             00370000
+         BAKR  R14,0                                                    00380000
+         USING FMTLIST,R12                                              00390000
+         LR    R12,R15                                                  00400000
+         STORAGE OBTAIN,LENGTH=4096,LOC=BELOW                           00410000
+         USING DSA,R13                                                  00420000
+         LR    R13,R1                                                   00430000
+         LA    R2,FM2LISTB                                              00440001
+         L     R3,=A(FM2LISTL)                                          00450001
+         LA    R4,FM3LISTB                                              00460001
+         L     R5,=A(FM3LISTL)                                          00470001
+         MVCL  R4,R2                                                    00480000
+         MVI   PRTLINE,C' '                                             00490000
+         MVC   PRTLINE+1(LPRTLINE-1),PRTLINE                            00500000
+         LA    R2,DIRJFCBA                                              00510000
+         ST    R2,DIREXLST                                              00520000
+         MVI   DIREXLST,X'07'                                           00530000
+         LA    R2,DIREXLST                                              00540000
+         STCM  R2,B'0111',DIRBLK+37                                     00550000
+         OI    OPENLIST+4,X'80'                                         00560000
+         OPEN  (DIRBLK,,SYSPRINT,OUTPUT),MF=(E,OPENLIST)                00570000
+         TM    SYSPRINT+48,X'10'                                        00580000
+         JO    SYSPOK                                                   00590000
+         WTO   MF=(E,MSG1)                                              00600000
+         OI    CLSLIST,X'80'                                            00610000
+         CLOSE (DIRBLK),MF=(E,CLSLIST)                                  00620000
+         LA    R15,16                                                   00630000
+         PR                                                             00640000
+SYSPOK   DS    0H                                                       00650000
+         TIME  DEC                                                      00660000
+         STM   R0,R1,TIMEDATE                                           00670000
+         UNPK  UNPKTIME,TIMEDATE                                        00680000
+         TR    HDRDATE,UNPKTIME                                         00690000
+         MVI   HDRANSI,C'1'                                             00700000
+         OI    OPENLIST,X'80'                                           00710000
+         RDJFCB (DIRBLK),MF=(E,OPENLIST)                                00720000
+         MVC   HDRDSN,DIRJFCBA                                          00730000
+         PUT   SYSPRINT,HDRLINE                                         00740000
+         PUT   SYSPRINT,TITLE                                           00750000
+         MVI   PRTANSI,C'0'                                             00760000
+         XC    LINECNT,LINECNT                                          00770000
+         MVC2  PRTLINE,=Y(LPRTLINE)                                     00780000
+         MVC2  PRTLINE+2,=Y(0)         SET PRINT REC ZZ                 00790000
+         SLR   R2,R2                                                    00800000
+EACHDIR  DS    0H                                                       00810000
+         GET   DIRBLK,INARE             READ A RECORD                   00820000
+         LA    R7,INARE+2               SKIP LENGTH NIBBL               00830000
+         LA    R2,INARE                                                 00840000
+         AH    R2,INARE                 ADD THE LENGTH.                 00850000
+EACHMEM  DS    0H                                                       00860000
+         CLC   LASTMEM,0(R7)            HIGH VALUES? (END OF DIRECTORY) 00870000
+         JE    ENDIT                    YES                             00880000
+         MVC   PRTNAME,0(R7)                                            00890000
+         BRAS  R9,EACHBLK                                               00900000
+         CR    R2,R7                    IS NEXT BLOCK IN BUFFER         00910000
+         JNH   EACHDIR                  NO GET NEXT DIRECTORY BLOCK     00920000
+         J     EACHMEM                  YES PROCESS NEXT MEMBER         00930000
+ENDIT    DS    0H                                                       00940000
+         PUT   SYSPRINT,FOOTER          Print end of report             00950000
+         OI    CLSLIST+4,X'80'                                          00960000
+         CLOSE (DIRBLK,,SYSPRINT),MF=(E,CLSLIST)                        00970000
+         PR                                                             00980000
+EACHBLK  DS    0H                                                       00990000
+         USING PDIRNTRY,R7                                              01000001
+         UNPK  UNPADATE,PDIRDATE                                        01010001
+         MVC   PRTDATE,PATADATE                                         01020000
+         TR    PRTDATE,UNPADATE                                         01030000
+         MVO   WKATIME,PDIRTIME                                         01040001
+         OI    WKATIME+4,X'0F'                                          01050000
+         UNPK  UNPATIME,WKATIME                                         01060000
+         MVC   PRTTIME,PATATIME                                         01070000
+         TR    PRTTIME,UNPATIME                                         01080000
+* FORMAT TTR                                                            01090002
+         XC    WORKA1,WORKA1                                            01100000
+         MVC   WORKA1+1,PDIRTTR                                         01110001
+         MVO   WORKA2,WORKA1                                            01120000
+         UNPK  WORKA3,WORKA2                                            01130000
+         NC    WORKA3,PATTERN                                           01140000
+         TR    WORKA3,TRANTAB                                           01150000
+         MVC   PRTTTR,WORKA3+3                                          01160000
+         MVC   PRTDEV(7),=CL7'       '                                  01170025
+         CLI   PDIRDEV,X'50'                                            01180004
+         JL    FMTPROC                                                  01190002
+         MVC   PRTTYPE,=C' MSG '                                        01200002
+         J     PRTDONE                                                  01210002
+FMTPROC  DS    0H                                                       01220002
+         CLI   FRMTNAME,X'C0'                                           01230002
+         JL    LWRCASE                                                  01240002
+         MVC   PRTTYPE,=C' DOF '                                        01250002
+         J     DIFDOF                                                   01260022
+LWRCASE  DS    0H                                                       01270002
+         MVC   PRTTYPE,=C' DIF '                                        01280002
+DIFDOF   DS    0H                                                       01290022
+         CLI   PDIRDEV,PDIR3271                                         01300022
+         JE    D32701                                                   01310022
+         CLI   PDIRDEV,PDIR3272                                         01320022
+         JE    D32702                                                   01330022
+         CLI   PDIRDEV,PDIR32P1                                         01340029
+         JE    P32701                                                   01350029
+         CLI   PDIRDEV,PDIR32P2                                         01360029
+         JE    P32702                                                   01370029
+         CLI   PDIRDEV,PDIRSCS1                                         01380022
+         JE    DSCS1                                                    01390022
+         CLI   PDIRDEV,PDIRSCS2                                         01400022
+         JE    DSCS2                                                    01410022
+         CLI   PDIRDEV,PDIR274X                                         01420026
+         JE    D274X                                                    01430026
+         CLI   PDIRDEV,PDIRFIDS                                         01440026
+         JE    DFIDS                                                    01450026
+         CLI   PDIRDEV,PDIRFID3                                         01460026
+         JE    DFIDS3                                                   01470026
+         CLI   PDIRDEV,PDIRFID4                                         01480026
+         JE    DFIDS4                                                   01490026
+         CLI   PDIRDEV,PDIRFIN                                          01500026
+         JE    DFIN                                                     01510026
+         CLI   PDIRDEV,PDIRFIJP                                         01520026
+         JE    DFIJP                                                    01530026
+         CLI   PDIRDEV,PDIRFIPB                                         01540026
+         JE    DFIPB                                                    01550026
+         CLI   PDIRDEV,PDIRFIFP                                         01560026
+         JE    DFIFP                                                    01570026
+         CLI   PDIRDEV,PDIRFID7                                         01580026
+         JE    DFIDS7                                                   01590026
+         CLI   PDIRDEV,PDIRDPMA                                         01600026
+         JH    DPMA                                                     01610026
+         MVC   PRTDEV(7),=CL7'UNKNOWN'                                  01620023
+         J     DEVDONE                                                  01630022
+D32701   DS    0H                                                       01640022
+         MVC   PRTDEV,=C'3270,1'                                        01650022
+         J     DEVDONE                                                  01660022
+D32702   DS    0H                                                       01670022
+         MVC   PRTDEV,=C'3270,2'                                        01680024
+         J     DEVDONE                                                  01690022
+P32701   DS    0H                                                       01700022
+         MVC   PRTDEV,=CL6'3270P1'                                      01710029
+         J     DEVDONE                                                  01720022
+P32702   DS    0H                                                       01730029
+         MVC   PRTDEV,=CL6'3270P2'                                      01740029
+         J     DEVDONE                                                  01750029
+DSCS1    DS    0H                                                       01760022
+         MVC   PRTDEV,=CL6'SCS1'                                        01770024
+         J     DEVDONE                                                  01780022
+DSCS2    DS    0H                                                       01790022
+         MVC   PRTDEV,=CL6'SCS2'                                        01800023
+         J     DEVDONE                                                  01810022
+D274X    DS    0H                                                       01820026
+         MVC   PRTDEV,=CL6'274X'                                        01830026
+         J     DEVDONE                                                  01840026
+DFIDS    DS    0H                                                       01850026
+         MVC   PRTDEV,=CL6'FIDS'                                        01860026
+         J     DEVDONE                                                  01870026
+DFIDS3   DS    0H                                                       01880026
+         MVC   PRTDEV,=CL6'FIDS3'                                       01890026
+         J     DEVDONE                                                  01900026
+DFIDS4   DS    0H                                                       01910026
+         MVC   PRTDEV,=CL6'FIDS4'                                       01920026
+         J     DEVDONE                                                  01930026
+DFIDS7   DS    0H                                                       01940026
+         MVC   PRTDEV,=CL6'FIDS7'                                       01950026
+         J     DEVDONE                                                  01960026
+DFIN     DS    0H                                                       01970026
+         MVC   PRTDEV,=CL6'FIN'                                         01980026
+         J     DEVDONE                                                  01990026
+DFIJP    DS    0H                                                       02000026
+         MVC   PRTDEV,=CL6'FIJP'                                        02010026
+         J     DEVDONE                                                  02020026
+DFIPB    DS    0H                                                       02030026
+         MVC   PRTDEV,=CL6'FIPB'                                        02040026
+         J     DEVDONE                                                  02050026
+DFIFP    DS    0H                                                       02060026
+         MVC   PRTDEV,=CL6'FIFP'                                        02070026
+         J     DEVDONE                                                  02080026
+DPMA     DS    0H                                                       02090026
+         CLI   PDIRDEV,PDIRDPMB                                         02100032
+         JH    DPMB                                                     02110032
+         MVC   PRTDEV,=CL6'DPM-A'                                       02120027
+         CLI   PDIRDEV,X'1A'                                            02130030
+         JNL   A10A15                                                   02140030
+         OI    PDIRDEV,X'F0'        We've got A1 to A9                  02150030
+         MVC   PRTDEV+5(1),PDIRDEV                                      02160024
+         J     DEVDONE                                                  02170022
+A10A15   DS    0H                                                       02180030
+         SR    R6,R6                                                    02190030
+         IC    R6,PDIRDEV                                               02200030
+         AHI   R6,-X'1A'            Make A10 == 0, A15 == 5             02210031
+         STC   R6,PDIRDEV                                               02220030
+         OI    PDIRDEV,X'F0'                                            02230030
+         MVC   PRTDEV+5(1),=C'1'                                        02240033
+         MVC   PRTDEV+6(1),PDIRDEV                                      02250030
+         J     DEVDONE                                                  02260030
+DPMB     DS    0H                                                       02270032
+         CLI   PDIRDEV,PDIRNDSA                                         02280032
+         JH    NDSA                                                     02290032
+         MVC   PRTDEV,=CL6'DPM-B'                                       02300032
+         CLI   PDIRDEV,X'2A'                                            02310032
+         JNL   B10B15                                                   02320032
+         OI    PDIRDEV,X'F0'        We've got A1 to A9                  02330032
+         MVC   PRTDEV+5(1),PDIRDEV                                      02340032
+         J     DEVDONE                                                  02350032
+B10B15   DS    0H                                                       02360032
+         SR    R6,R6                                                    02370032
+         IC    R6,PDIRDEV                                               02380032
+         AHI   R6,-X'2A'            Make B10 == 0, B15 == 5             02390032
+         STC   R6,PDIRDEV                                               02400032
+         OI    PDIRDEV,X'F0'                                            02410032
+         MVC   PRTDEV+5(1),=C'1'                                        02420033
+         MVC   PRTDEV+6(1),PDIRDEV                                      02430032
+         J     DEVDONE                                                  02440032
+NDSA     DS    0H                                                       02450032
+         CLI   PDIRDEV,X'4A'                                            02460032
+         JNL   C10C15                                                   02470032
+         MVC   PRTDEV,=CL6'3270-A'                                      02480027
+         OI    PDIRDEV,X'F0'                                            02490022
+         MVC   PRTDEV+6(1),PDIRDEV                                      02500024
+         J     DEVDONE                                                  02510032
+C10C15   DS    0H                                                       02520032
+         SR    R6,R6                                                    02530032
+         IC    R6,PDIRDEV                                               02540032
+         AHI   R6,-X'4A'            Make A10 == 0, A15 == 5             02550032
+         STC   R6,PDIRDEV                                               02560032
+         OI    PDIRDEV,X'F0'                                            02570032
+         MVC   PRTDEV+6(1),=C'1'                                        02580033
+         MVC   PRTDEV+7(1),PDIRDEV                                      02590032
+         J     DEVDONE                                                  02600032
+DEVDONE  DS    0H                                                       02610022
+* code to do features goes here                                         02620032
+PRTDONE  DS    0H                                                       02630002
+         BRAS  R10,PRINT                                                02640000
+         SR    R6,R6                                                    02650010
+         IC    R6,PDIRC          load half dir entry length             02660019
+         SLL   R6,1              double it                              02670019
+         LA    R7,12(R6,R7)      bump to next dir entry                 02680021
+         BR    R9                                                       02690000
+         DROP  R7                                                       02700000
+* PRINT Subroutine                                                      02710002
+PRINT    DS    0H                                                       02720000
+         PUT   SYSPRINT,PRTLINE                                         02730000
+         MVI   PRTANSI,C' '                                             02740000
+         LH    R3,LINECNT                                               02750000
+         AHI   R3,+1                                                    02760000
+         STH   R3,LINECNT                                               02770000
+         CHI   R3,+50                                                   02780000
+         JNL   PRINTHDR                                                 02790000
+         BR    R10                                                      02800000
+PRINTHDR DS    0H                                                       02810000
+         PUT   SYSPRINT,HDRLINE                                         02820000
+         PUT   SYSPRINT,TITLE                                           02830000
+         MVI   PRTANSI,C'0'                                             02840000
+         XC    LINECNT,LINECNT                                          02850000
+         BR    R10                                                      02860000
+  SPACE                                                                 02870025
+PATADATE DC    X'000105020304'                                          02880000
+PATATIME DC    X'0001080203080405090607'                                02890000
+PATTERN  DC    9X'0F'                                                   02900000
+TRANTAB  DC    C'0123456789ABCDEF'                                      02910000
+LASTMEM  DC    X'FFFFFFFFFFFFFFFF'                                      02920000
+MSG1     WTO   '*** SYSPRINT DD OPEN FAILURE, RUN ABANDONED ***',      *02930000
+               ROUTCDE=11,MF=L                                          02940000
+FOOTER   DC    Y(LFOOTER),H'0'                                          02950025
+         DC    C'0*** END OF REPORT ***'                                02960025
+LFOOTER  EQU   *-FOOTER                                                 02970025
+TITLE    DC    Y(LTITLE),H'0'                                           02980000
+         DC    C'-'                                                     02990000
+         DC    CL8'FMT NAME'                                            03000000
+         DC    CL4' '                                                   03010000
+         DC    CL6' TTR  '                                              03020000
+         DC    CL2' '                                                   03030000
+         DC    CL19' DATE     TIME'                                     03040002
+         DC    CL2' '                                                   03050002
+         DC    CL5'TYPE '                                               03060002
+         DC    CL2' '                                                   03070003
+         DC    CL6'DEVICE'                                              03080022
+         DC    CL2' '                                                   03090022
+         DC    CL4''                                                    03100022
+         DC    CL2' '                                                   03110022
+LTITLE   EQU   *-TITLE                                                  03120000
+         LTORG                                                          03130028
+         DS    0D                                                       03140000
+FM2LISTB EQU   *                                                        03150001
+         DCB   DDNAME=SYSPRINT,DSORG=PS,MACRF=PM,RECFM=VBA              03160000
+         DCB   DDNAME=FMTLIB,DSORG=PS,RECFM=U,LRECL=256,MACRF=(GM),    C03170000
+               EODAD=ENDIT                                              03180000
+*SBMULT  DC    H'16'                                           1        03190002
+#DRLINE  DC    Y(L#DRLINE),H'0'                                         03200000
+         DS    C' '                                                     03210000
+         DC    C' '                                                     03220000
+         DC    X'00011002031004050F0F0A0B110C0D0E'                      03230000
+         DC    C' - FMT DIRECTORY LIST FOR LIBRARY - '                  03240000
+         DC    CL44' '                                                  03250000
+L#DRLINE EQU   *-#DRLINE                                                03260000
+         DC    CL15' ',C' :.'                                           03270000
+         DC    CL5' ',C'.'                                              03280000
+         DC    CL8' ',C':.'                                             03290000
+FM2LISTL EQU   *-FM2LISTB                                               03300001
+DSA      DSECT                                                          03310000
+         DS    18F                                                      03320000
+FM3LIST  EQU   *                                                        03330001
+TIMEDATE DS    PL8                                                      03340000
+PACKSIZE DS    2F                                                       03350000
+WKATIME  DC    CL5' '                                                   03360000
+WORKA1   DS    F                                                        03370000
+WORKA2   DS    XL5                                                      03380000
+WORKA3   DS    XL9                                                      03390000
+LINECNT  DS    H                                                        03400000
+OPENLIST OPEN  (DIRBLK,,SYSPRINT,OUTPUT),MF=L                           03410000
+CLSLIST  CLOSE (DIRBLK,,SYSPRINT),MF=L                                  03420000
+DIREXLST DS    F                                                        03430000
+DIRJFCBA DS    0F,176C                                                  03440000
+         DS    0D                                                       03450000
+FM3LISTB EQU   *                                                        03460001
+SYSPRINT DCB   DDNAME=SYSPRINT,DSORG=PS,MACRF=PM,RECFM=VBA              03470000
+DIRBLK   DCB   DDNAME=FMTLIB,DSORG=PS,RECFM=U,LRECL=256,MACRF=(GM),    C03480000
+               EODAD=ENDIT                                              03490000
+*SBMULT  DC    H'16'                                           1        03500002
+HDRLINE  DC    H'0',H'0'                                                03510000
+HDRANSI  DS    C                                                        03520000
+         DC    C' '                                                     03530000
+HDRDATE  DC    X'00011002031004050F0F0A0B110C0D0E'                      03540000
+         DC    C' - FMT DIRECTORY LIST FOR LIBRARY - '                  03550000
+HDRDSN   DC    CL44' '                                                  03560000
+UNPKTIME DC    CL15' ',C' :.'                                           03570000
+UNPADATE DC    CL5' ',C'.'                                              03580000
+UNPATIME DC    CL8' ',C':.'                                             03590000
+FM3LISTL EQU   *-FM3LISTB                                               03600001
+PRTLINE  DC    H'0',H'0'                                                03610000
+PRTANSI  DS    C                                                        03620000
+PRTNAME  DS    CL8                                                      03630000
+         DS    CL4                                                      03640000
+PRTTTR   DS    CL6                                                      03650000
+         DS    CL2                                                      03660000
+PRTDATE  DS    CL6                                                      03670002
+         DS    CL2                                                      03680002
+PRTTIME  DS    CL11                                                     03690002
+         DS    CL2                                                      03700002
+PRTTYPE  DS    CL5                                                      03710002
+         DS    CL2                                                      03720002
+PRTDEV   DS    CL6                                                      03730022
+         DS    CL2                                                      03740022
+PRTFEAT  DS    CL4                                                      03750022
+         DS    CL2                                                      03760022
+LPRTLINE EQU   *-PRTLINE                                                03770000
+         DS    0F                                                       03780025
+INARE    DC    256C' '                                                  03790000
+WKARELEN EQU   *-DSA                                                    03800000
+* DSECT BORROWED FROM DFSUTL40 & DFSUTSA0                               03810002
+PDIRNTRY DSECT ,                  PARM                         @BIJ9MJW 03820001
+PDIRNAME DS    0CL8               FULL ENTRY NAME              @BIJ9MJW 03830001
+PDIRDEV  DS    CL1                FMT DIF/DOF DEVICE CODE      @BIH9G   03840018
+PDIR3271 EQU   X'00'              3270 DISPLAY MODEL 1         @BIH9G   03850018
+PDIR32P1 EQU   X'01'              3270 PRINTER MODEL 1                  03860029
+PDIR3272 EQU   X'02'              3270 DISPLAY MODEL 2         @BIH9G   03870018
+PDIR32P2 EQU   X'03'              3270 PRINTER MODEL 2                  03880029
+PDIR274X EQU   X'04'              274X                                  03890026
+PDIRFIDS EQU   X'05'              Finance                               03900026
+PDIRFID3 EQU   X'06'              Finance FIDS3                         03910026
+PDIRFID4 EQU   X'07'              Finance FIDS4                         03920026
+PDIRFIN  EQU   X'08'              Finance                               03930026
+PDIRFIJP EQU   X'09'              Finance                               03940026
+PDIRFIPB EQU   X'0A'              Finance                               03950026
+PDIRFIFP EQU   X'0B'              Finance                               03960026
+PDIRSCS1 EQU   X'0C'              SCS1 DISPLAY MODEL 1         @BIH9G   03970026
+PDIRSCS2 EQU   X'0D'              SCS2 DISPLAY MODEL 1         @BIH9G   03980026
+PDIRFID7 EQU   X'0E'              Finance FIDS7                         03990026
+PDIRDPMA EQU   X'10'              DPMA DISPLAY MODEL 1         @BIH9G   04000018
+PDIRDPMB EQU   X'20'              DPMB DISPLAY MODEL 1                  04010032
+PDIRNDSA EQU   X'40'              3270-A                       @BIH9G   04020018
+PDIRFEAT DS    CL1                FMT DIF/DOF DEVICE FEATURE   @BIH9G   04030018
+FRMTNAME DS    CL6                LOGICAL FORMAT NAME          @BIJ9MJW 04040001
+PDIRTTR  DS    CL3                TTR OF BLOCK                 @BIJ9MJW 04050001
+PDIRC    DS    CL1                CONCATENATION AND USER HW    @BIJ9MJW 04060001
+PDIRSIZE DS    0XL4               SIZE OF BLOCK IN BYTES       @BIJ9MJW 04070001
+PDIRSIZH DC    H'0'               BLOCKSIZE 1ST HW             @BIJ9MJW 04080001
+PDIRSIZL DC    H'0'               BLOCKSIZE 2ND HW             @BIJ9MJW 04090001
+PDIRRSRV DC    X'0'               RESERVED                     @BIJ9MJW 04100001
+PDIRDATE DS    XL3'0'             DATE STAMP                   @BIJ9MJW 04110001
+PDIRTIME DS    F                  TIME STAMP                   @BIJ9MJW 04120001
+*                                                                       04130001
+PDIRLN   EQU   *-PDIRNTRY                                               04140001
+         END                                                            04150000
+ PUNCH ' IDENTIFY FMTLIST(''FMTLIST IMS V14.1 &SYSDATE &SYSTIME'') '    04160000
+ PUNCH ' ENTRY    FMTLIST'                                              04170000
+ PUNCH ' NAME     FMTLIST(R)'                                           04180001
+         END                                                            04190000
