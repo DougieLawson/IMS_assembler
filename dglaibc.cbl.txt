@@ -1,0 +1,24 @@
+         01 AIB.                                                        00010000
+            05 AIBID              PIC X(8)  VALUE "DFSAIB  ".           00020000
+            05 LEN                PIC S9(8) COMP VALUE +264.            00030000
+            05 SUB-FUNCTION       PIC X(8).                             00040000
+            05 RESOURCE-NAME1     PIC X(8).                             00050000
+            05 PCB-NAME           REDEFINES                             00060000
+               RESOURCE-NAME1     PIC X(8).                             00070000
+            05 RESOURCE-NAME2     PIC X(8).                             00080000
+            05                    PIC X(8).                             00090000
+            05 IOAREA-LENGTH      PIC S9(8) COMP.                       00100000
+            05 IOAREA-USED        PIC 9(9)  COMP.                       00110000
+            05 RESOURCE-FIELD     PIC X(8).                             00120000
+            05                    PIC X(2).                             00130000
+            05                    PIC X(2).                             00140000
+            05 CALL-RETURN-CODE   PIC S9(8) COMP.                       00150000
+            05 REASON-CODE        PIC 9(9)  COMP.                       00160000
+            05 ERROR-EXTENSION    PIC S9(8) COMP.                       00170000
+            05 RSA1-PTR           POINTER.                              00180000
+            05 RSA2-PTR           POINTER.                              00190000
+            05 RSA3-PTR           POINTER.                              00200000
+            05 USER-DEFINED-TOKEN PIC X(16).                            00210000
+            05 IMS-RETURNED-TOKEN PIC X(8).                             00220000
+            05                    PIC X(152).                           00230000
+

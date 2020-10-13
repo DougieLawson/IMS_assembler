@@ -1,0 +1,9 @@
+PART  PCB      TYPE=DB,DBDNAME=DI21PART,PROCOPT=G,KEYLEN=43             00010000
+      SENSEG NAME=PARTROOT,PARENT=0                                     00020000
+      SENSEG NAME=STANINFO,PARENT=PARTROOT                              00030000
+      SENSEG NAME=STOKSTAT,PARENT=PARTROOT                              00040000
+      SENSEG NAME=CYCCOUNT,PARENT=STOKSTAT                              00050000
+      SENSEG NAME=BACKORDR,PARENT=STOKSTAT                              00060000
+      PSBGEN   LANG=ASSEM,PSBNAME=AERSAM08                              00070000
+      END                                                               00080000
+

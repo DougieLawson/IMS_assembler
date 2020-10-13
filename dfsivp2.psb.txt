@@ -1,0 +1,6 @@
+         PCB   TYPE=TP,MODIFY=YES                                       00320000
+PCB01    PCB   TYPE=DB,DBDNAME=IVPDB2,PROCOPT=A,KEYLEN=10               00330000
+         SENSEG NAME=A1111111,PARENT=0,PROCOPT=A                        00340000
+         PSBGEN LANG=ASSEM,PSBNAME=DFSIVP2                              00350000
+         END                                                            00360000
+
