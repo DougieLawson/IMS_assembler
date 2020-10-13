@@ -57,11 +57,16 @@
 *           - changed to relative branches                     @DGL06 * 00570000
 *           - added a footer to the sysprint                   @DGL06 * 00580000
 *           - PSB size multiplier is now fixed at 64           @DGL06 * 00590000
-* Amended : Dougie Lawson, Darkside Logic (One) Ltd 17/05/2016 @DGL07 * 00600000
+* Amended : Dougie Lawson, Darkside Logic (One) Ltd dd/mm/2016 @DGL07 * 00600000
 *           - added IMS V14                                    @DGL07 * 00610000
 *           - removed everything for V9                        @DGL07 * 00620000
 *           - renumbered source code                           @DGL07 * 00630000
 *             minimum version is V10 now                       @DGL07 * 00640000
+* Amended : Dougie Lawson, Darkside Logic (One) Ltd 13/12/2018 @DGL08 * 00641002
+*           - added IMS V15                                    @DGL08 * 00642002
+*           - removed everything for V10                       @DGL08 * 00643002
+*           - renumbered source code                           @DGL08 * 00644002
+*             minimum version is V11 now                       @DGL08 * 00645002
 *********************************************************************** 00650000
         MACRO                                                           00660000
 &LAB    MVC2  &TARGET,&SOURCE                                           00670000
@@ -149,25 +154,30 @@ EACHBLK  DS    0H                                                       01420000
          UNPK  UNPATIME,WKATIME                                         01490000
          MVC   PRTTIME,PATATIME                                         01500000
          TR    PRTTIME,UNPATIME                                         01510000
-         CLI   ACBRLVL,ACBREL14                               , @DGL07  01520000
-         JE    IMS14                                          , @DGL07  01530000
+         CLI   ACBRLVL,ACBREL15                               , @DGL08  01520002
+         JE    IMS15                                          , @DGL08  01530002
+         CLI   ACBRLVL,ACBREL14                               , @DGL07  01531002
+         JE    IMS14                                          , @DGL07  01532002
          CLI   ACBRLVL,ACBREL13                               , @DGL06  01540000
          JE    IMS13                                          , @DGL06  01550000
          CLI   ACBRLVL,ACBREL12                               , @DGL04  01560000
          JE    IMS12                                          , @DGL04  01570000
          CLI   ACBRLVL,ACBREL11                               , @DGL03  01580000
          JE    IMS11                                          , @DGL03  01590000
-         CLI   ACBRLVL,ACBREL10                               , @DGL02  01600000
-         JE    IMS101                                         , @DGL02  01610000
+*        CLI   ACBRLVL,ACBREL10                               , @DGL08  01600002
+*        JE    IMS101                                         , @DGL08  01610002
 *        CLI   ACBRLVL,ACBREL91 lines deleted by =========>   , @DGL07  01620000
 *        JE    IMS91            lines deleted by =========>   , @DGL07  01630000
 *        CLI   ACBRLVL,ACBREL81 lines deleted by =========>   , @DGL06  01640000
 *        BE    IMS81            lines deleted by =========>   , @DGL06  01650000
          MVC   PRTRELL,=C'UNK '                                         01660000
          J     RELDONE                                        , @DGL07  01670000
-IMS14    DS    0H                                             , @DGL07  01680000
-         MVC   PRTRELL,=C'14.1'                               , @DGL07  01690000
+IMS15    DS    0H                                             , @DGL08  01680002
+         MVC   PRTRELL,=C'15.1'                               , @DGL08  01690002
          J     RELDONE                                        , @DGL06  01700000
+IMS14    DS    0H                                             , @DGL07  01701002
+         MVC   PRTRELL,=C'14.1'                               , @DGL07  01702002
+         J     RELDONE                                        , @DGL06  01703002
 IMS13    DS    0H                                             , @DGL06  01710000
          MVC   PRTRELL,=C'13.1'                               , @DGL06  01720000
 *        MVI   PSBMULT+1,64  All versions now have mult=64.   , @DGL06  01730000
@@ -179,9 +189,9 @@ IMS12    DS    0H                                             , @DGL04  01750000
 IMS11    DS    0H                                             , @DGL03  01790000
          MVC   PRTRELL,=C'11.1'                               , @DGL03  01800000
 *        MVI   PSBMULT+1,64  All versions now have mult=64.   , @DGL06  01810000
-         J     RELDONE                                        , @DGL03  01820000
-IMS101   DS    0H                                             , @DGL02  01830000
-         MVC   PRTRELL,=C'10.1'                               , @DGL02  01840000
+*        J     RELDONE                                        , @DGL08  01820002
+*MS101   DS    0H                                             , @DGL08  01830002
+*        MVC   PRTRELL,=C'10.1'                               , @DGL08  01840002
 *        MVI   PSBMULT+1,64  All versions now have mult=64.   , @DGL06  01850000
 *        J     RELDONE                                        , @DGL07  01860000
 *MS91    DS    0H                                             , @DGL07  01870000
@@ -415,8 +425,10 @@ ACBREL11 EQU   X'B1'                                         , @DGL03   04140000
 ACBREL12 EQU   X'C1'                                         , @DGL04   04150000
 ACBREL13 EQU   X'D1'                                         , @DGL06   04160000
 ACBREL14 EQU   X'E1'                                         , @DGL07   04170000
+ACBREL15 EQU   X'E3'                                         , @DGL08   04171002
          END                                                            04180000
- PUNCH ' IDENTIFY ACBLIST(''ACBLIST IMS V14.1 &SYSDATE &SYSTIME'') '    04190000
+ PUNCH ' IDENTIFY ACBLIST(''ACBLIST IMS V15.1 &SYSDATE &SYSTIME'') '    04190003
  PUNCH ' ENTRY    ACBLIST'                                              04200000
- PUNCH ' NAME     ACBLIST(R)'                                           04210000
-         END                                                            04230000
+ PUNCH ' NAME     ACBLIST(R)'                                           04210001
+         END                                                            04220000
+
