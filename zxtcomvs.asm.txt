@@ -1,0 +1,113 @@
+ZXTCOMVS CSECT                                                          00010000
+         YREGS                                                          00020000
+         CHANGEID NAME=ZXTCOMVS.ASSEMBLED.AT.&SYSTIME..ON.&SYSDATE..(C)X00030000
+               .1992.COPYRIGHT.DOUGIE.LAWSON,BASE=R12,                 X00035000
+               CSECTNM=ZXTCOMVS                                         00040000
+         CHANGEID IDEND=YES                                             00050000
+                                       EJECT                            00060000
+         LA    R15,INIT_PARMS                                           00070000
+         BASR  R14,R15                 Initialise parms etc.            00080000
+MAIN_LOOP       DS 0H                                                   00090000
+         LA    R15,GU_PROC                                              00100000
+         BASR  R14,R15                 TCO GU processing                00110000
+         TM    PROCESS,BAD_GU_STATUS                                    00120000
+         BO    MAIN_ERROR                                               00130000
+         TM    PROCESS,TIME_TO_GO                                       00140000
+         BO    MAIN_RETURN                                              00150000
+         LA    R15,EDIT_PROC                                            00160000
+         BASR  R14,R15                 edit input message               00170000
+         B     MAIN_LOOP                                                00180000
+MAIN_ERROR      DS 0H                                                   00190000
+* error handling can go here.                                           00200000
+MAIN_RETURN     DS 0H                                                   00210000
+         LEAVE RC=0                                                     00220000
+                                       EJECT                            00230000
+INIT_PARMS      DS 0H                                                   00240000
+         BAKR  R14,0                                                    00250000
+         L     R1,0(R1)                load I/O PCB address             00260000
+         LA    R1,0(,R1)               reset the top bit                00270000
+         ST    R1,IO_PCB_A             save IO_PCB for later            00280000
+         NI    PROCESS,B'00000000'     reset ALL flags                  00290000
+         PR                                                             00300000
+                                       EJECT                            00310000
+GU_PROC         DS 0H                                                   00320000
+         BAKR  R14,0                                                    00330000
+         L     R4,IO_PCB_A             load I/O PCB address             00340000
+         USING IO_PCB,R4               address I/O pcb                  00350000
+         LA    R5,IO_AREA              load I/O area address            00360000
+         CALL  DFSTDLI0,(=CL4'GU',(R4),(R5)),VL,                       c00370000
+               MF=(E,CALLLIST)                                          00380000
+         CLC   =C'  ',IO_STATUS        blank status code ?              00390000
+         BE    GU_RETURN               yes - happiness                  00400000
+         CLC   =C'QC',IO_STATUS        QC status code ?                 00410000
+         BE    GU_QC_STATUS            nearly time to go home           00420000
+         B     GU_BAD_STATUS           anything else                    00430000
+GU_QC_STATUS    DS 0H                                                   00440000
+         OI    PROCESS,TIME_TO_GO      set QC status received           00450000
+         B     GU_RETURN                                                00460000
+GU_BAD_STATUS   DS 0H                                                   00470000
+         OI    PROCESS,BAD_GU_STATUS   set bad status code              00480000
+GU_RETURN       DS 0H                                                   00490000
+         DROP  R4                                                       00500000
+         PR                                                             00510000
+                                       EJECT                            00520000
+                                       EJECT                            00530000
+EDIT_PROC       DS 0H                                                   00540000
+         BAKR  R14,0                                                    00550000
+         LA    R3,IO_AREA              address input segment            00560000
+         LH    R5,0(R3)                load up the length               00570000
+         CH    R5,=H'8'                                                 00580000
+         BNE   EDIT_NOT_MSGSET         its a time-schd-req without **** 00590000
+         L     R3,4(R3)                prime segment pointer            00600000
+EDIT_NEXT_MSG   DS 0H                                                   00610000
+         LTR   R3,R3                   do we have a segment ?           00620000
+         BZ    EDIT_NO_MORE            no - exit loop                   00630000
+         LA    R4,4(R3)                skip next msg pointer            00640000
+         ST    R4,MSGADDR              save for MGCR.                   00650000
+         LA    R15,MGCR_PROC                                            00660000
+         BASR  R14,R15                 MVS MGCR processing              00670000
+         L     R3,0(R3)                pick up next segment             00680000
+         B     EDIT_NEXT_MSG                                            00690000
+EDIT_NOT_MSGSET DS 0H                                                   00700000
+         ST    R3,MSGADDR                                               00710000
+         LA    R15,MGCR_PROC                                            00720000
+         BASR  R14,R15                 MVS MGCR processing              00730000
+         B     EDIT_NO_MORE                                             00740000
+EDIT_NO_MORE    DS 0H                                                   00750000
+         PR                                                             00760000
+                                       EJECT                            00770000
+MGCR_PROC       DS 0H                                                   00780000
+         BAKR  R14,0                                                    00790000
+         L     R5,MSGADDR              load output message address      00800000
+         USING MSG,R5                                                   00810000
+         OI    MSGLL,X'80'                                              00820000
+         XC    MSGZZ,MSGZZ                                              00830000
+         XR    R0,R0                                                    00840000
+         MGCR  (R5)                    Issue MVS command                00850000
+         DROP  R5                                                       00860000
+         PR                                                             00870000
+                                       EJECT                            00880000
+IO_AREA  DS    5F                                                       00890000
+MSGADDR  DS    F                                                        00900000
+CALLLIST DS    6F                                                       00910000
+IO_PCB_A DS    F                                                        00920000
+PROCESS  DS    X                                                        00930000
+TIME_TO_GO      EQU X'80'                                               00940000
+BAD_GU_STATUS   EQU X'40'                                               00950000
+PROCESS_FLAG_2  EQU X'20'              spare                            00960000
+PROCESS_FLAG_3  EQU X'10'              spare                            00970000
+PROCESS_FLAG_4  EQU X'08'              spare                            00980000
+PROCESS_FLAG_5  EQU X'04'              spare                            00990000
+PROCESS_FLAG_6  EQU X'02'              spare                            01000000
+PROCESS_FLAG_7  EQU X'01'              spare                            01010000
+IO_PCB      DSECT                                                       01020000
+            DS CL8                                                      01030000
+            DS CL2                                                      01040000
+IO_STATUS   DS CL2                                                      01050000
+IO_MSG_DATE DS PL4                                                      01060000
+IO_MSG_TIME DS PL4                                                      01070000
+MSG      DSECT                                                          01080000
+MSGLL    DS    H                                                        01090000
+MSGZZ    DS    H                                                        01100000
+MSGTEXT  DS    CL126                                                    01110000
+         END                                                            01120000

@@ -1,0 +1,634 @@
+ZXTCOXIT CSECT                                                          00010000
+*---------------------------------------------------------------------* 00020000
+*                                                                     * 00030000
+*       M O D U L E    P R O L O G                                    * 00040000
+*                                                BOGGED FROM DFSTXIT0 * 00050000
+*---------------------------------------------------------------------* 00060000
+*                                                                     * 00070000
+* MODULE NAME: ZXTCOXIT                                               * 00080000
+*                                                                     * 00090000
+* DESCRIPTIVE NAME: SMART TCO EXIT ROUTINE                            * 00100000
+*                                                                     * 00110000
+* FUNCTION: THIS EXIT ROUTINE WILL PASS THE INPUT SUPPLIED BY THE     * 00120000
+*           USER IN THE MESSAGE STATEMENTS OR SCHEDULE REQUEST        * 00130000
+*           STATEMENTS FOUND IN THE DFSTCF SCRIPT MEMBER CURRENTLY    * 00140000
+*           BEING PROCESSED.  IT CAN PRODUCE ONE OR MORE SINGLE       * 00150000
+*           AND/OR MULTI SEGMENT INPUT MESSAGES TO BE PROCESSED BY    * 00160000
+*           THE TCO DDM.  IF THE MESSAGE RETURNED BY A GU CALL IS 8   * 00170000
+*           BYTES LONG, THE CHAIN OF INPUT MESSAGES LOCATED AT MSG+4  * 00180000
+*           IS PROCESSED AND PASSED TO THE TCO INTERFACE PRODUCING    * 00190000
+*           ALL MESSAGES SUPPLIED BY THE USER IN THE DFSTCF SCRIPT    * 00200000
+*           IF THE MESSAGE RETURNED BY THE GU CALL IS 20 BYTES LONG   * 00210000
+*           THE TEXT FOUND AT LOCATION MSG+4 FOR A LENGTH OF 16 BYTES * 00220000
+*           (20 WITH LLZZ), IS PASSED TO THE TCO INTERFACE TO FORM A  * 00230000
+*           SINGLE SEGMENT MESSAGE FOR PROCESSING BY THE IMS DDM.     * 00240000
+*                                                                     * 00250000
+* DGL additions to the basic TCO exit:                                * 00260000
+*           Before passing the segments to the TCO DDM we edit them.  * 00270000
+*           This will change the first occurance of the special       * 00280000
+*           strings "DAY" "MTH" and "##" to todays name eg TUE, this  * 00290000
+*           months name eg APR and todays date eg 21.                 * 00300000
+*           This can allow us to load a different script for each     * 00310000
+*           day of the week with the following as the last entry in   * 00320000
+*           the standard script DFSTCF.                               * 00330000
+*           (This is because TCF cannot load more than one script at  * 00340000
+*           a single scheduling)                                      * 00350000
+*                                                                     * 00360000
+* COLS:     1---+----10---+----20---+----30---+----40---+----50       * 00370000
+*           DFSTCF LOAD DAYTCF                                        * 00380000
+*           *TIME      ZXTCOXIT            S                          * 00390000
+*                                                                     * 00400000
+*                                                                     * 00410000
+* Amendments:                                                         * 00420000
+*    #1                                                               * 00430000
+*           Having had success with the additions there are two more  * 00440000
+*           items that can be used as variables, year and time, they  * 00450000
+*           will be implemented with this first amendment.            * 00460000
+*           The values that will be substituted are "YEAR" and "TIME" * 00470000
+*                                                                     * 00480000
+*                                                                     * 00490000
+*           THE EXPECTED INPUT IS                                     * 00500000
+*           0008 0000 PPPPPPPP                                        * 00510000
+*           LL    ZZ     POINTER                                      * 00520000
+*           OR                                                        * 00530000
+*           0014 0000 INPUTDATA..............                         * 00540000
+*                                                                     * 00550000
+*           IF A POINTER IS PASSED, IT IS EXPECTED TO POINT TO A      * 00560000
+*           CHAIN OF MESSAGE SEGMENTS OF THE FOLLOWING FORMAT.        * 00570000
+*           NEXT PTR LL ZZ DATA                                       * 00580000
+*          I    4   I 2I 2I  VARIABLE                                 * 00590000
+*                                                                     * 00600000
+*           WHERE NEXT PTR CONTAINS THE ADDRESS OF THE NEXT SEGMENT   * 00610000
+*           OR IS 0 AT END OF CHAIN.                                  * 00620000
+*                                                                     * 00630000
+*           LL    IS LENGTH INCLUDING ITSELF                          * 00640000
+*                                                                     * 00650000
+*           ZZ IS 03 FOR SINGLE SEGMENT MSG                           * 00660000
+*                 01 FOR 1ST SEG OF MULTI SEG MSG                     * 00670000
+*                 00 FOR MIDDLE SEG OF MULTI SEG MSG                  * 00680000
+*                 02 FOR LAST SEG OF MULTI SEG MSG                    * 00690000
+*                                                                     * 00700000
+*           AT ENTRY THE ADDRESS OF A SINGLE ENTRY PARM LIST IS IN    * 00710000
+*           THE REGISTER R1                                           * 00720000
+*           CONTAINING THE ADDRESS OF THE TCO PCB TO BE USED FOR ALL  * 00730000
+*           CALLS TO THE TCO INTERFACE.                               * 00740000
+*                                                                     * 00750000
+*           THE TIME OF SCHEDULING IS FOUND IN THE TIME AREA OF THE   * 00760000
+*           PCB (PCB+16) IN HHMM FORMAT.                              * 00770000
+*           THE DATE IS FOUND IN THE DATE AREA OF THE PCB (PCB+12) IN * 00780000
+*           PACKED DECIMAL FORMAT.                                    * 00790000
+*                                                                     * 00800000
+*           0CYYDDDS                                                  * 00810000
+*           WHERE C IS THE CENTURY (0=1900,1=2000 etc.)               * 00820000
+*                 YY IS THE YEAR                                      * 00830000
+*                 DDD IS THE DAY                                      * 00840000
+*                 AND S IS A +SIGN                                    * 00850000
+*                                                                     * 00860000
+*                                                                     * 00870000
+* MODULE TYPE: DC FEATURE                                             * 00880000
+*    PROCESSOR:  ASSEMBLER H ONLY                                     * 00890000
+*    ATTRIBUTES: NON-REENTRANT,REUSABLE,MVS/ESA ONLY                  * 00900000
+*                                                                     * 00910000
+* ENTRY POINT: ZXTCOXIT                                               * 00920000
+*    LINKAGE: BALR FROM DFSTTIM0                                      * 00930000
+*                                                                     * 00940000
+* INPUT:                                                              * 00950000
+*    REGISTERS AT ENTRY:                                              * 00960000
+*        R1  = PARM LIST CONTAINING ADDRESS OF TCO PCB         @PL44023 00970000
+*        R10 = RESERVED FOR DFSTDLI0 (DO NOT USE IN USER EXIT)        * 00980000
+*        R13 = SAVEAREA ADDRESS                                       * 00990000
+*        R14 = RETURN ADDRESS                                         * 01000000
+*        R15 = ENTRY POINT ADDRESS                                    * 01010000
+*                                                                     * 01020000
+* OUTPUT:                                                             * 01030000
+*    R15 IS IGNORED BY DFSTTIM0                                       * 01040000
+*    SINGLE AND/OR MULTI SEGMENT INPUT MESSAGES TO BE                 * 01050000
+*    PROCESSED BY DFSTDDM0, THE TCO DDM ROUTINE.                      * 01060000
+*    AN ERROR MESSAGE.                                                * 01070000
+*                                                                     * 01080000
+* EXIT-NORMAL:                                                        * 01090000
+*    RETURN CODE: R15 = ZERO                                          * 01100000
+*    ALL OTHER REGS RESTORED TO INPUT VALUE                           * 01110000
+*                                                                     * 01120000
+* EXTERNAL REFERENCES:                                                * 01130000
+*    ROUTINES:   DFSTDLI0 - LANGUAGE INTERFACE ROUTINE                * 01140000
+*                                                                     * 01150000
+*                                                                     * 01160000
+*    IMS MACROS: CHANGEID  LEAVE  REQUATE                             * 01170000
+*                                                                     * 01180000
+*                                                                     * 01190000
+* WARNING:                                                            * 01200000
+*    The use of ABEND in TCO will leave your system up but with TCO   * 01210000
+*    disabled until the next IMS restart.                             * 01220000
+*                                                                     * 01230000
+*---------------------------------------------------------------------* 01240000
+         EJECT                                                          01250000
+*---------------------------------------------------------------------* 01260000
+*                                                                     * 01270000
+*        M O D U L E     P S E U D O C O D E                          * 01280000
+*                                                                     * 01290000
+*---------------------------------------------------------------------* 01300000
+*                                                                     * 01350000
+*                                                                     * 01360000
+*   CALL INITIALISE                                                   * 01370000
+* MAIN-LOOP:                                                          * 01380000
+*   CALL GU-PROCESS                                                   * 01390000
+*     IF TIME-TO-GO THEN GO TO RETURN                                 * 01400000
+*     ELSEIF BAD-GU-STATUS THEN GO TO ERROR                           * 01410000
+*   CALL DATE-PROCESS                                                 * 01420000
+*   CALL EDIT-PROCESS                                                 * 01430000
+*     IF BAD-ISRT-STATUS THEN GO TO ERROR                             * 01440000
+*       ELSEIF BAD-PURG-STATUS THEN GO TO ERROR                       * 01450000
+*   GO TO MAIN-LOOP                                                   * 01460000
+*                                                                     * 01470000
+* ERROR:                                                              * 01480000
+*   ISSUE ERROR MESSAGES   /* not implemented */                      * 01490000
+*                                                                     * 01500000
+* RETURN:                                                             * 01510000
+*   LEAVE RC=0                                                        * 01520000
+*                                                                     * 01530000
+*                                                                     * 01540000
+* INITIALISE:                                                         * 01550000
+*   SAVE PARM REGISTER                                                * 01560000
+*   INITIALISE PROCESS FLAGS                                          * 01570000
+*                                                                     * 01580000
+*                                                                     * 01590000
+* GU-PROCESS:                                                         * 01600000
+*   CALL DFSTDLI0 USING GU,PCB,IO_AREA                                * 01610000
+*     IF STATUSbb THEN GO TO GU-RETURN                                * 01620000
+*       ELSEIF STATUSQC THEN SET TIME-TO-GO FLAG                      * 01630000
+*         ELSE SET BAD-GU-STATUS FLAG                                 * 01640000
+*                                                                     * 01650000
+* GU-RETURN:                                                          * 01660000
+*   RETURN.                                                           * 01670000
+*                                                                     * 01680000
+*                                                                     * 01690000
+* DATE-PROCESS:                                                       * 01700000
+*   GET DATE FROM PCB.                                                * 01710000
+*   SAVE TIME FROM PCB.                                                 01720000
+*   DIVIDE DATE INTO century-year AND days                            * 01730000
+*   DIVIDE century-year BY 4                                          * 01740000
+*   SPLIT RESULT INTO number-of-leap-days AND remainder               * 01750000
+*   /* if the year is divisible by 4 then this will result in the     * 01760000
+*      number of days since 1900 being over by 1 */                   * 01770000
+*   MULTIPLY century-year BY 365                                      * 01780000
+*   ADD number-of-leap-days                                           * 01790000
+*   ADD days                                                          * 01800000
+*   /* The result is the number of days since 1900 */                 * 01810000
+*   MOVE year                                                         * 01820000
+*   ADD 1900    /* this gives a true century value */                 * 01830000
+*   DIVIDE INTO century AND year                                      * 01840000
+*   IF remainder = 0 THEN DO                                          * 01850000
+*     CORRECT THE result                                              * 01860000
+*     IF remainder(century-year / 400) = 0 THEN GOTO A-LEAP-YEAR      * 01870000
+*     ELSEIF year = 0 THEN GO TO NOT-A-LEAP-YEAR                      * 01880000
+*     ELSE GO TO A-LEAP-YEAR                                          * 01890000
+*   END                                                               * 01900000
+*   GO TO NOT-A-LEAP-YEAR                                             * 01910000
+*                                                                     * 01920000
+* A-LEAP-YEAR:                                                        * 01930000
+*   MOVE 29 TO FEBRUARY                                               * 01940000
+*   GO TO A-LEAP-YEAR-1.                                              * 01950000
+*                                                                     * 01960000
+* NOT-A-LEAP-YEAR:                                                    * 01970000
+*   MOVE 28 TO FEBRUARY                                               * 01980000
+*                                                                     * 01990000
+* A-LEAP-YEAR-1:                                                      * 02000000
+*                                                                     * 02010000
+*   POINT TO START-OF-MONTHS                                          * 02020000
+*   SET result TO days                                                * 02030000
+* DATE-LOOP-1:                                                        * 02040000
+*   SUBTRACT DAYS-IN-MONTH FROM result                                * 02050000
+*   IF THE result < 0 THEN GO TO DATE-LOOP-1-END                      * 02060000
+*   MOVE TO THE NEXT MONTH                                            * 02070000
+*   GO TO DATE-LOOP-1                                                 * 02080000
+* DATE-LOOP-1-END:                                                    * 02090000
+*   /* pointer now has this month. */                                 * 02100000
+*   ADD DAYS-IN-THIS-MONTH TO result                                  * 02110000
+*   MOVE result TO SCR##                                              * 02120000
+*   MOVE MONTH-NAME TO SCRMTH                                         * 02130000
+*                                                                     * 02140000
+*   POINT TO DAY-NAMES                                                * 02150000
+*   DIVIDE daynum / 7    /* This gives remainder 0=MON, 1=TUE etc. */ * 02160000
+*   SET counter TO 0                                                  * 02170000
+* DATE-LOOP-2:                                                        * 02180000
+*   IF result = counter THEN GO TO DATE-LOOP-2-END                    * 02190000
+*   ADD 1 TO counter                                                  * 02200000
+*   MOVE TO THE NEXT DAY-NAME                                         * 02210000
+*   GO TO DATE-LOOP-2                                                 * 02220000
+* DATE-LOOP-2-END:                                                    * 02230000
+*   MOVE DAY-NAME TO SCRDAY                                           * 02240000
+*   MOVE YEAR TO SCRYEAR                                              * 02250000
+*   RETURN.                                                           * 02260000
+*                                                                     * 02270000
+*                                                                     * 02280000
+* EDIT-PROCESS:                                                       * 02290000
+*   IF mess-length ¬= 8 THEN GO TO EDIT-NOT-MSGSET                    * 02300000
+*                                                                     * 02310000
+*   PRIME SEGMENT POINTER                                             * 02320000
+* EDIT-NEXT-MSG:                                                      * 02330000
+*   IF SEGMENT POINTER = 0 THEN GO TO EDIT-NO-MORE                    * 02340000
+*                                                                     * 02350000
+*   SET INDEX = LENGTH                                                * 02360000
+* EDIT-LOOP-1:                                                        * 02370000
+*   IF message-text(INDEX) = "MTH" THEN GO TO EDIT-LOOP-1-END         * 02380000
+*   SKIP TO NEXT BYTE                                                 * 02390000
+*   SUBTRACT 1 FROM INDEX                                             * 02400000
+*   IF INDEX ¬= 0 THEN GO TO EDIT-LOOP-1                              * 02410000
+*   GO TO EDIT-MTH-NOT-FND                                            * 02420000
+* EDIT-LOOP-1-END:                                                    * 02430000
+*   MOVE SCRMTH TO message-text(INDEX)                                * 02440000
+* EDIT-MTH-NOT-FND:                                                   * 02450000
+*                                                                     * 02460000
+*   SET INDEX = LENGTH                                                * 02470000
+* EDIT-LOOP-2:                                                        * 02480000
+*   IF message-text(INDEX) = "DAY" THEN GO TO EDIT-LOOP-2-END         * 02490000
+*   SKIP TO NEXT BYTE                                                 * 02500000
+*   SUBTRACT 1 FROM INDEX                                             * 02510000
+*   IF INDEX ¬= 0 THEN GO TO EDIT-LOOP-2                              * 02520000
+*   GO TO EDIT-DAY-NOT-FND                                            * 02530000
+* EDIT-LOOP-2-END:                                                    * 02540000
+*   MOVE SCRDAY TO message-text(INDEX)                                * 02550000
+* EDIT-DAY-NOT-FND:                                                   * 02560000
+*                                                                     * 02570000
+*   SET INDEX = LENGTH                                                * 02580000
+* EDIT-LOOP-3:                                                        * 02590000
+*   IF message-text(INDEX) = "##" THEN GO TO EDIT-LOOP-3-END          * 02600000
+*   SKIP TO NEXT BYTE                                                 * 02610000
+*   SUBTRACT 1 FROM INDEX                                             * 02620000
+*   IF INDEX ¬= 0 THEN GO TO EDIT-LOOP-3                              * 02630000
+*   GO TO EDIT-##-NOT-FND                                             * 02640000
+* EDIT-LOOP-3-END:                                                    * 02650000
+*   MOVE SCRDAY TO message-text                                       * 02660000
+* EDIT-##-NOT-FND:                                                    * 02670000
+*                                                                     * 02680000
+*   SET INDEX = LENGTH                                                * 02690000
+* EDIT-LOOP-4:                                                        * 02700000
+*   IF message-text(INDEX) = "YEAR" THEN GO TO EDIT-LOOP-4-END        * 02710000
+*   SKIP TO NEXT BYTE                                                 * 02720000
+*   SUBTRACT 1 FROM INDEX                                             * 02730000
+*   IF INDEX ¬= 0 THEN GO TO EDIT-LOOP-4                              * 02740000
+*   GO TO EDIT-YEAR-NOT-FND                                           * 02750000
+* EDIT-LOOP-4-END:                                                    * 02760000
+*   MOVE SCRYEAR TO message-text                                      * 02770000
+* EDIT-YEAR-NOT-FND:                                                  * 02780000
+*                                                                     * 02790000
+*   SET INDEX = LENGTH                                                * 02800000
+* EDIT-LOOP-5:                                                        * 02810000
+*   IF message-text(INDEX) = "TIME" THEN GO TO EDIT-LOOP-5-END        * 02820000
+*   SKIP TO NEXT BYTE                                                 * 02830000
+*   SUBTRACT 1 FROM INDEX                                             * 02840000
+*   IF INDEX ¬= 0 THEN GO TO EDIT-LOOP-5                              * 02850000
+*   GO TO EDIT-TIME-NOT-FND                                           * 02860000
+* EDIT-LOOP-5-END:                                                    * 02870000
+*   MOVE SCRTIME TO message-text                                      * 02880000
+* EDIT-TIME-NOT-FND:                                                  * 02890000
+*                                                                     * 02900000
+*   CALL ISRT-PROCESS                                                 * 02910000
+*   IF LAST SEGMENT WAS NOT EOM THEN RESET PURG FLAG                  * 02920000
+*   SKIP TO NEXT SEGMENT                                              * 02930000
+*   GO TO EDIT-NEXT-MSG                                               * 02940000
+*                                                                     * 02950000
+* EDIT-NOT-MSG-SET                                                    * 02960000
+*   CALL ISRT-PROCESS                                                 * 02970000
+*   IF BAD-ISRT-STATUS THEN GO TO EDIT-ERROR                          * 02980000
+*   GO TO EDIT-NO-MORE                                                * 02990000
+*                                                                     * 03000000
+* EDIT-ERROR:                                                         * 03010000
+*   SEND ERROR MESSAGES   /* not implemented */                       * 03020000
+*                                                                     * 03030000
+* EDIT-NO-MORE:                                                       * 03040000
+*   RETURN.                                                           * 03050000
+*                                                                     * 03060000
+*                                                                     * 03070000
+* ISRT-PROCESS:                                                       * 03080000
+*   IF PURG THEN GO TO PURG-PROCESS                                   * 03090000
+*   SET PURG FLAG                                                     * 03100000
+*   CALL DFSTDLI0 USING ISRT,PCB,IO_AREA                              * 03110000
+*     IF STATUSbb THEN GO TO ISRT-DONE                                * 03120000
+*       ELSE SET BAD-ISRT-STATUS FLAG                                 * 03130000
+*   GO TO ISRT-RETURN                                                 * 03140000
+*                                                                     * 03150000
+* PURG-PROCESS                                                        * 03160000
+*   CALL DFSTDLI0 USING PURG,PCB,IO_AREA                              * 03170000
+*     IF STATUSbb THEN GO TO ISRT-RETURN                              * 03180000
+*       ELSE SET BAD-PURG-STATUS FLAG                                 * 03190000
+*                                                                     * 03200000
+* ISRT-RETURN:                                                        * 03210000
+*   RETURN.                                                           * 03220000
+*---------------------------------------------------------------------* 03230000
+         YREGS                                                          03240000
+         CHANGEID NAME=ZXTCOXIT.ASSEMBLED.AT.&SYSTIME..ON.&SYSDATE..(C)X03250000
+               .1992.COPYRIGHT.DOUGIE.LAWSON,BASE=R12,                 X03260001
+               CSECTNM=ZXTCOXIT                                         03261001
+         CHANGEID IDEND=YES                                             03270000
+                                       EJECT                            03280000
+         LA    R15,INIT_PARMS                                           03290000
+         BASR  R14,R15                 Initialise parms etc.            03300000
+MAIN_LOOP       DS 0H                                                   03310000
+         LA    R15,GU_PROC                                              03320000
+         BASR  R14,R15                 TCO GU processing                03330000
+         TM    PROCESS,BAD_GU_STATUS                                    03340000
+         BO    MAIN_ERROR                                               03350000
+         TM    PROCESS,TIME_TO_GO                                       03360000
+         BO    MAIN_RETURN                                              03370000
+         LA    R15,DATE_PROC                                            03380000
+         BASR  R14,R15                 find day and month names         03390000
+         LA    R15,EDIT_PROC                                            03400000
+         BASR  R14,R15                 edit input message               03410000
+         TM    PROCESS,BAD_ISRT_STATUS                                  03420000
+         BO    MAIN_ERROR                                               03430000
+         TM    PROCESS,BAD_PURG_STATUS                                  03440000
+         BO    MAIN_ERROR                                               03450000
+         B     MAIN_LOOP                                                03460000
+MAIN_ERROR      DS 0H                                                   03470000
+* error handling can go here.                                           03480000
+MAIN_RETURN     DS 0H                                                   03490000
+         LEAVE RC=0                                                     03500000
+                                       EJECT                            03510000
+INIT_PARMS      DS 0H                                                   03520000
+         BAKR  R14,0                                                    03530000
+         L     R1,0(R1)                load I/O PCB address             03540000
+         LA    R1,0(,R1)               reset the top bit                03550000
+         ST    R1,IO_PCB_A             save IO_PCB for later            03560000
+         NI    PROCESS,B'00000000'     reset ALL flags                  03570000
+         PR                                                             03580000
+                                       EJECT                            03590000
+GU_PROC         DS 0H                                                   03600000
+         BAKR  R14,0                                                    03610000
+         L     R4,IO_PCB_A             load I/O PCB address             03620000
+         USING IO_PCB,R4               address I/O pcb                  03630000
+         LA    R5,IO_AREA              load I/O area address            03640000
+         CALL  DFSTDLI0,(=CL4'GU',(R4),(R5)),VL,                       c03650000
+               MF=(E,CALLLIST)                                          03660000
+         CLC   =C'  ',IO_STATUS        blank status code ?              03670000
+         BE    GU_RETURN               yes - happiness                  03680000
+         CLC   =C'QC',IO_STATUS        QC status code ?                 03690000
+         BE    GU_QC_STATUS            nearly time to go home           03700000
+         B     GU_BAD_STATUS           anything else                    03710000
+GU_QC_STATUS    DS 0H                                                   03720000
+         OI    PROCESS,TIME_TO_GO      set QC status received           03730000
+         B     GU_RETURN                                                03740000
+GU_BAD_STATUS   DS 0H                                                   03750000
+         OI    PROCESS,BAD_GU_STATUS   set bad status code              03760000
+GU_RETURN       DS 0H                                                   03770000
+         DROP  R4                                                       03780000
+         PR                                                             03790000
+                                       EJECT                            03800000
+DATE_PROC       DS 0H                                                   03810000
+         BAKR  R14,0                                                    03820000
+         L     R4,IO_PCB_A             address the io-pcb to get date   03830000
+         USING IO_PCB,R4                                                03840000
+         MVC   DATE,IO_MSG_DATE        date = 0cyydddf from io-pcb      03850000
+         MVC   SCRTIME,IO_MSG_TIME     move the time from pcb           03860000
+         DROP  R4                                                       03870000
+         ZAP   YEAR,DATE               year = 0000cyydddC               03880000
+         DP    YEAR,=P'1000'           year = 0cyyC00dddC               03890000
+         ZAP   DATE,YEAR+3(3)          date = 0000dddC                  03900000
+         ZAP   YEAR,YEAR(3)            year = 0000000cyyC               03910000
+         ZAP   WORK1,YEAR              work1 = 0000cyyC                 03920000
+         DP    WORK1,=P'4'             work1 = 000llCrC                 03930000
+         ZAP   WORK3,WORK1+3(1)        work3 = 000000rC                 03940000
+         ZAP   WORK1,WORK1(3)          work1 = 00000llC                 03950000
+         ZAP   DAYNUM,YEAR             daynum = 0000cyyC                03960000
+         MP    DAYNUM,=P'365'          daynum = 0nnnnnnC                03970000
+         AP    DAYNUM,WORK1            daynum = 0mmmmmmC                03980000
+         AP    DAYNUM,DATE             daynum = 0ooooooC                03990000
+         AP    YEAR,=P'1900'           year = 000000yyyyC               04000000
+         ZAP   WORK2,YEAR              work2 = 000yyyyC                 04010000
+         DP    WORK2,=P'100'           work2 = 0hhC0llC                 04020000
+         ZAP   YEAR1,WORK2(2)          year1 = century digits of yyyy   04030000
+         ZAP   YEAR2,WORK2+2(2)        year2 = lo order digits of yyyy  04040000
+         CP    WORK3,=P'0'             is year divisible by 4 ?         04050000
+         BNE   DATE_NOTALEAP           no - not a leap year             04060000
+         SP    DAYNUM,=P'1'            yes so subtract 1 from daynum    04070000
+         ZAP   WORK3,YEAR              work3 = 000yyyyC                 04080000
+         DP    WORK3,=P'400'           work3 = 0llCrrrC                 04090000
+         ZAP   WORK3,WORK3+2(2)        work3 = 0000rrrC                 04100000
+         CP    WORK3,=P'0'             is year divisible by 400 ?       04110000
+         BE    DATE_ISALEAP            yes - is a leap year             04120000
+         CP    YEAR2,=P'0'             is year divisible by 100 ?       04130000
+         BE    DATE_NOTALEAP           yes - not a leap year            04140000
+DATE_ISALEAP    DS 0H                                                   04150000
+         MVC   FEB(2),=P'29'           set 29 days for February         04160000
+         B     DATE_ISALEAP1                                            04170000
+DATE_NOTALEAP   DS 0H                                                   04180000
+         MVC   FEB(2),=P'28'           set 28 days for February         04190000
+DATE_ISALEAP1   DS 0H                                                   04200000
+         LA    R4,MONTHS               point to January                 04210000
+         USING THISMTH,R4                                               04220000
+         ZAP   WORK4,DATE              work4 = 0000dddC                 04230000
+DATE_LOOP1      DS 0H                                                   04240000
+         SP    WORK4,THISMTHD          work4 = work4 - days in month    04250000
+         CP    WORK4,=P'0'             is it less than equal 0 ?        04260000
+         BNP   DATE_FOUNDIT                                             04270000
+         LA    R4,THISMTHL(R4)         next month                       04280000
+         B     DATE_LOOP1                                               04290000
+DATE_FOUNDIT    DS 0H                                                   04300000
+         AP    WORK4,THISMTHD          work4 = day.of.month             04310000
+         UNPK  SCR##,WORK4             make todays date printable       04320000
+         OI    SCR##+1,X'F0'           and correct the last character   04330000
+         MVC   SCRMTH,THISMTHN         move English.mth.name            04340000
+         DROP  R4                                                       04350000
+         LA    R4,DAYNAMES             point to Monday                  04360000
+         ZAP   WORK1,DAYNUM                                             04370000
+         DP    WORK1,=P'7'             remainder - 0=MON, 1=TUE etc.    04380000
+         ZAP   WORK1,WORK1+3(1)                                         04390000
+         ZAP   WORK2,=P'0'                                              04400000
+DATE_LOOP2      DS 0H                                                   04410000
+         CP    WORK1,WORK2             does it match ?                  04420000
+         BE    DATE_LOOP2_END          yes - we've found todays entry   04430000
+         AP    WORK2,=P'1'             work2 = work2 + 1                04440000
+         LA    R4,3(R4)                next day                         04450000
+         B     DATE_LOOP2                                               04460000
+DATE_LOOP2_END  DS 0H                                                   04470000
+         MVC   SCRDAY,0(R4)            move English.day.name            04480000
+         UNPK  SCRYEAR,YEAR            make year printable              04490000
+         OI    SCRYEAR+3,X'F0'         and correct the last character   04500000
+         PR                                                             04510000
+                                       EJECT                            04520000
+EDIT_PROC       DS 0H                                                   04530000
+         BAKR  R14,0                                                    04540000
+         LA    R3,IO_AREA              address input segment            04550000
+         LH    R5,0(R3)                load up the length               04560000
+         CH    R5,=H'8'                                                 04570000
+         BNE   EDIT_NOT_MSGSET         its a time-schd-req without **** 04580000
+         L     R3,4(R3)                prime segment pointer            04590000
+EDIT_NEXT_MSG   DS 0H                                                   04600000
+         LTR   R3,R3                   do we have a segment ?           04610000
+         BZ    EDIT_NO_MORE            no - exit loop                   04620000
+         LA    R4,4(R3)                skip next msg pointer            04630000
+         ST    R4,MSGADDR              save for later and for ISRT.     04640000
+         LH    R5,0(R4)                load up the length               04650000
+         SH    R5,=H'4'                subtract prefix length           04660000
+         LA    R4,4(R4)                skip ll/zz                       04670000
+EDIT_LOOP1      DS 0H                                                   04680000
+         CLC   =C'MTH',0(R4)           look for MTH to substitute       04690000
+         BE    EDIT_LOOP1_END          found it                         04700000
+         LA    R4,1(R4)                next position                    04710000
+         BCT   R5,EDIT_LOOP1           and around we go                 04720000
+         B     EDIT_MTH_NOTFND                                          04730000
+EDIT_LOOP1_END  DS 0H                                                   04740000
+         MVC   0(3,R4),SCRMTH          replace MTH with month name      04750000
+EDIT_MTH_NOTFND DS 0H                                                   04760000
+         L     R4,MSGADDR              point to input segment           04770000
+         LH    R5,0(R4)                load up the length               04780000
+         SH    R5,=H'4'                subtract prefix length           04790000
+         LA    R4,4(R4)                skip ll/zz                       04800000
+EDIT_LOOP2      DS 0H                                                   04810000
+         CLC   =C'DAY',0(R4)           look for DAY to substitute       04820000
+         BE    EDIT_LOOP2_END          found it                         04830000
+         LA    R4,1(R4)                next position                    04840000
+         BCT   R5,EDIT_LOOP2           and around we go                 04850000
+         B     EDIT_DAY_NOTFND                                          04860000
+EDIT_LOOP2_END  DS 0H                                                   04870000
+         MVC   0(3,R4),SCRDAY          replace DAY with todays name     04880000
+EDIT_DAY_NOTFND DS 0H                                                   04890000
+         L     R4,MSGADDR              point to input segment           04900000
+         LH    R5,0(R4)                load up the length               04910000
+         SH    R5,=H'4'                subtract prefix length           04920000
+         LA    R4,4(R4)                skip ll/zz                       04930000
+EDIT_LOOP3      DS 0H                                                   04940000
+         CLC   =C'##',0(R4)            look for ## to substitute        04950000
+         BE    EDIT_LOOP3_END          found it                         04960000
+         LA    R4,1(R4)                next position                    04970000
+         BCT   R5,EDIT_LOOP3           and around we go                 04980000
+         B     EDIT_##_NOTFND                                           04990000
+EDIT_LOOP3_END  DS 0H                                                   05000000
+         MVC   0(2,R4),SCR##           replace ## with todays date      05010000
+EDIT_##_NOTFND  DS 0H                                                   05020000
+         L     R4,MSGADDR              point to input segment           05030000
+         LH    R5,0(R4)                load up the length               05040000
+         SH    R5,=H'4'                subtract prefix length           05050000
+         LA    R4,4(R4)                skip ll/zz                       05060000
+EDIT_LOOP4      DS 0H                                                   05070000
+         CLC   =C'YEAR',0(R4)          look for YEAR to substitute      05080000
+         BE    EDIT_LOOP4_END          found it                         05090000
+         LA    R4,1(R4)                next position                    05100000
+         BCT   R5,EDIT_LOOP4           and around we go                 05110000
+         B     EDIT_YEAR_NOTFND                                         05120000
+EDIT_LOOP4_END  DS 0H                                                   05130000
+         MVC   0(4,R4),SCRYEAR         replace YEAR with todays value   05140000
+EDIT_YEAR_NOTFND DS 0H                                                  05150000
+         L     R4,MSGADDR              point to input segment           05160000
+         LH    R5,0(R4)                load up the length               05170000
+         SH    R5,=H'4'                subtract prefix length           05180000
+         LA    R4,4(R4)                skip ll/zz                       05190000
+EDIT_LOOP5      DS 0H                                                   05200000
+         CLC   =C'TIME',0(R4)          look for TIME to substitute      05210000
+         BE    EDIT_LOOP5_END          found it                         05220000
+         LA    R4,1(R4)                next position                    05230000
+         BCT   R5,EDIT_LOOP5           and around we go                 05240000
+         B     EDIT_TIME_NOTFND                                         05250000
+EDIT_LOOP5_END  DS 0H                                                   05260000
+         MVC   0(4,R4),SCRTIME         replace TIME with message time   05270000
+EDIT_TIME_NOTFND DS 0H                                                  05280000
+         LA    R15,ISRT_PROC                                            05290000
+         BASR  R14,R15                 TCO ISRT processing              05300000
+         TM    PROCESS,BAD_ISRT_STATUS                                  05310000
+         BO    EDIT_ERROR                                               05320000
+         TM    PROCESS,BAD_PURG_STATUS                                  05330000
+         BO    EDIT_ERROR                                               05340000
+         TM    7(R3),X'02'             was last segment an end-of-msg ? 05350000
+         BNZ   EDIT_NO_RESET           yes - PURG next time.            05360000
+         NI    PROCESS,X'FF'-PURG_NEEDED reset PURG flag                05370000
+EDIT_NO_RESET   DS 0H                                                   05380000
+         L     R3,0(R3)                pick up next segment             05390000
+         B     EDIT_NEXT_MSG                                            05400000
+EDIT_NOT_MSGSET DS 0H                                                   05410000
+         ST    R3,MSGADDR                                               05420000
+         LA    R15,ISRT_PROC                                            05430000
+         BASR  R14,R15                 TCO ISRT processing              05440000
+         TM    PROCESS,BAD_ISRT_STATUS                                  05450000
+         BO    EDIT_ERROR                                               05460000
+         B     EDIT_NO_MORE                                             05470000
+EDIT_ERROR      DS 0H                                                   05480000
+* error handling can go here.                                           05490000
+EDIT_NO_MORE    DS 0H                                                   05500000
+         PR                                                             05510000
+                                       EJECT                            05520000
+ISRT_PROC       DS 0H                                                   05530000
+         BAKR  R14,0                                                    05540000
+         L     R4,IO_PCB_A             load I/O PCB address             05550000
+         USING IO_PCB,R4               ... and keep assembler sweet.    05560000
+         L     R5,MSGADDR              load output message address      05570000
+         TM    PROCESS,PURG_NEEDED                                      05580000
+         BO    PURG_PROC               PURG is required.                05590000
+         OI    PROCESS,PURG_NEEDED     set PURG for next message        05600000
+         CALL  DFSTDLI0,(=CL4'ISRT',(R4),(R5)),VL,                     X05610000
+               MF=(E,CALLLIST)                                          05620000
+         CLC   =C'  ',IO_STATUS        blank status code ?              05630000
+         BE    ISRT_RETURN             yes - happiness                  05640000
+         OI    PROCESS,BAD_ISRT_STATUS set bad status code              05650000
+         B     ISRT_RETURN                                              05660000
+PURG_PROC       DS 0H                                                   05670000
+         CALL  DFSTDLI0,(=CL4'PURG',(R4),(R5)),VL,                     X05680000
+               MF=(E,CALLLIST)                                          05690000
+         CLC   =C'  ',IO_STATUS        blank status code ?              05700000
+         BE    ISRT_RETURN             yes - happiness                  05710000
+         OI    PROCESS,BAD_PURG_STATUS set bad status code              05720000
+ISRT_RETURN     DS 0H                                                   05730000
+         DROP  R4                                                       05740000
+         PR                                                             05750000
+                                       EJECT                            05760000
+IO_AREA  DS    5F                                                       05770000
+MSGADDR  DS    F                                                        05780000
+DAYNAMES DS    0CL3                                                     05790000
+         DC    CL3'SUN'                                                 05800000
+         DC    CL3'MON'                                                 05810000
+         DC    CL3'TUE'                                                 05820000
+         DC    CL3'WED'                                                 05830000
+         DC    CL3'THU'                                                 05840000
+         DC    CL3'FRI'                                                 05850000
+         DC    CL3'SAT'                                                 05860000
+MONTHS   DS    0F                                                       05870000
+         DC    P'31',P'01',CL3'JAN'                                     05880000
+FEB      DC    P'00',P'02',CL3'FEB'                                     05890000
+         DC    P'31',P'03',CL3'MAR'                                     05900000
+         DC    P'30',P'04',CL3'APR'                                     05910000
+         DC    P'31',P'05',CL3'MAY'                                     05920000
+         DC    P'30',P'06',CL3'JUN'                                     05930000
+         DC    P'31',P'07',CL3'JUL'                                     05940000
+         DC    P'31',P'08',CL3'AUG'                                     05950000
+         DC    P'30',P'09',CL3'SEP'                                     05960000
+         DC    P'31',P'10',CL3'OCT'                                     05970000
+         DC    P'30',P'11',CL3'NOV'                                     05980000
+         DC    P'31',P'12',CL3'DEC'                                     05990000
+CALLLIST DS    6F                                                       06000000
+IO_PCB_A DS F                                                           06010000
+DATE     DS    PL4                                                      06020000
+YEAR     DS    PL6                                                      06030000
+YEAR1    DS    PL2                                                      06040000
+YEAR2    DS    PL2                                                      06050000
+DAYNUM   DS    PL4                                                      06060000
+WORK1    DS    PL4                                                      06070000
+WORK2    DS    PL4                                                      06080000
+WORK3    DS    PL4                                                      06090000
+WORK4    DS    PL2                                                      06100000
+PROCESS  DS    X                                                        06110000
+TIME_TO_GO      EQU X'80'                                               06120000
+BAD_GU_STATUS   EQU X'40'                                               06130000
+BAD_ISRT_STATUS EQU X'20'                                               06140000
+BAD_PURG_STATUS EQU X'10'                                               06150000
+PURG_NEEDED     EQU X'08'                                               06160000
+PROCESS_FLAG_5  EQU X'04'              spare                            06170000
+PROCESS_FLAG_6  EQU X'02'              spare                            06180000
+PROCESS_FLAG_7  EQU X'01'              spare                            06190000
+SCRDAY   DS    CL3                                                      06200000
+SCR##    DS    CL2                                                      06210000
+SCRMTH   DS    CL3                                                      06220000
+SCRYEAR  DS    CL4                                                      06230000
+SCRTIME  DS    CL4                                                      06240000
+         LTORG                                                          06250000
+THISMTH  DSECT                                                          06260000
+THISMTHD DS    PL2                                                      06270000
+THISMTH# DS    PL2                                                      06280000
+THISMTHN DS    CL3                                                      06290000
+THISMTHL EQU   *-THISMTH                                                06300000
+IO_PCB      DSECT                                                       06310000
+            DS CL8                                                      06320000
+            DS CL2                                                      06330000
+IO_STATUS   DS CL2                                                      06340000
+IO_MSG_DATE DS PL4                                                      06350000
+IO_MSG_TIME DS CL4                                                      06360000
+         END                                                            06370000
